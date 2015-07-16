@@ -52,7 +52,7 @@ class ExasolHook(object):
         conn.jconn.autocommit = autocommit
         cur = conn.cursor()
         cur.execute(sql)
-        rows = cur.fetchall()
+        rows = [] if not cur._rs else cur.fetchall()
         cur.close()
         conn.close()
         return rows
