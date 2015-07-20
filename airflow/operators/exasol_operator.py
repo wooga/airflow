@@ -34,4 +34,5 @@ class ExasolOperator(BaseOperator):
     def execute(self, context):
         logging.info('Executing: ' + self.sql)
         self.hook = ExasolHook(exasol_conn_id=self.exasol_conn_id)
-        self.hook.run(self.sql, self.autocommit)
+        for row in self.hook.get_records(self.sql, self.autocommit):
+            logging.info('Result: ' + ','.join(map(str,row)) )

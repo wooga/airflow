@@ -44,14 +44,15 @@ class ExasolHook(object):
                            '/var/exasol/exajdbc.jar',)
         return conn
 
-    def get_records(self, sql):
+    def get_records(self, sql, autocommit=False):
         '''
         Executes the sql and returns a set of records.
         '''
         conn = self.get_conn()
+        conn.jconn.autocommit = autocommit
         cur = conn.cursor()
         cur.execute(sql)
-        rows = cur.fetchall()
+        rows = [] if not cur._rs else cur.fetchall()
         cur.close()
         conn.close()
         return rows
