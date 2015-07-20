@@ -1,4 +1,5 @@
 from datetime import datetime
+from datetime import timedelta
 import logging
 from urlparse import urlparse
 from time import sleep
@@ -66,9 +67,11 @@ class SqlSensor(BaseSensorOperator):
     template_ext = ('.hql', '.sql',)
 
     @apply_defaults
-    def __init__(self, conn_id, sql, *args, **kwargs):
+    def __init__(self, conn_id, sql,
+                 retries=17, retry_delay=timedelta(seconds=600),
+                 *args, **kwargs):
 
-        super(SqlSensor, self).__init__(*args, **kwargs)
+        super(SqlSensor, self).__init__(retries=retries, retry_delay=retry_delay, *args, **kwargs)
 
         self.sql = sql
         self.conn_id = conn_id
