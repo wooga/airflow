@@ -26,7 +26,7 @@ class JdbcHook(BaseHook):
         a '.sql' extensions.
     """
     def __init__(
-            self, jdbc_url, jdbc_driver_name, jdbc_driver_loc,host=None, login=None,
+            self, jdbc_url=None, jdbc_driver_name=None, jdbc_driver_loc=None,host=None, login=None,
             psw=None, db=None, port=None, extra=None, conn_id=None):
         self.jdbc_driver_loc = jdbc_driver_loc
         self.jdbc_driver_name = jdbc_driver_name

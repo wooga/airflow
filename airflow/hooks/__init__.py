@@ -21,6 +21,7 @@ _hooks = {
     'http_hook': ['HttpHook'],
     'druid_hook': ['DruidHook'],
     'jdbc_hook': ['JdbcHook'],
+     'exasol_hook': ['ExasolHook'],
 }
 
 _import_module_attrs(globals(), _hooks)
