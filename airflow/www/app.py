@@ -21,7 +21,7 @@ from flask import request
 import sqlalchemy as sqla
 from wtforms import (
     widgets,
-    Form, DateTimeField, SelectField, TextAreaField, PasswordField)
+    Form, DateTimeField, SelectField, StringField, TextAreaField, PasswordField)
 
 from pygments import highlight, lexers
 from pygments.formatters import HtmlFormatter
@@ -1584,6 +1584,8 @@ class ConnectionModelView(wwwutils.SuperUserMixin, AirflowModelView):
     column_default_sort = ('conn_id', False)
     column_list = ('conn_id', 'conn_type', 'host', 'port')
     form_overrides = dict(password=VisiblePasswordField)
+    form_extra_fields = { 'jdbc_driver_path': StringField('JDBC Driver Path'), 'jdbc_driver_classname': StringField('JDBC Driver Class'),
+                         'jdbc_conn_url': StringField('JDBC Connection URL')}
     form_choices = {
         'conn_type': [
             ('ftp', 'FTP',),
