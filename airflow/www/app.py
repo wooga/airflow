@@ -1577,15 +1577,19 @@ admin.add_view(mv)
 # Hack to not add this view to the menu
 admin._menu = admin._menu[:-1]
 
-
 class ConnectionModelView(wwwutils.SuperUserMixin, AirflowModelView):
+    create_template = 'airflow/conn_create.html'
+    edit_template = 'airflow/conn_edit.html'
     verbose_name = "Connection"
     verbose_name_plural = "Connections"
     column_default_sort = ('conn_id', False)
     column_list = ('conn_id', 'conn_type', 'host', 'port')
     form_overrides = dict(password=VisiblePasswordField)
-    form_extra_fields = { 'jdbc_driver_path': StringField('JDBC Driver Path'), 'jdbc_driver_classname': StringField('JDBC Driver Class'),
-                         'jdbc_conn_url': StringField('JDBC Connection URL')}
+    form_extra_fields = { 'jdbc_drv_path' : StringField('Driver Path'),
+                          'jdbc_drv_clsname': StringField('Driver Class'),
+                          #'jdbc_conn_url': StringField('JDBC Connection URL'
+                          # )
+                        }
     form_choices = {
         'conn_type': [
             ('ftp', 'FTP',),
@@ -1603,12 +1607,37 @@ class ConnectionModelView(wwwutils.SuperUserMixin, AirflowModelView):
             ('samba', 'Samba',),
             ('sqlite', 'Sqlite',),
         ]
+
     }
+
+    def on_model_change(self, form, model, is_created):
+        formdata = form.data
+        if formdata['conn_type'] == 'jdbc':
+            jdbc = {key:formdata[key] for key in ('jdbc_drv_path','jdbc_drv_clsname'
+                                                  #, 'jdbc_conn_url'
+                                                   ) if key in formdata}
+            model.extra = json.dumps(jdbc)
+
+    def on_form_prefill(self, form, id):
+        data = form.data
+        if 'extra' in data and data['extra'] != None:
+            d = json.loads(data['extra'])
+           #form.jdbc_conn_url.data = d['jdbc_conn_url']
+            form.jdbc_drv_path.data = d['jdbc_drv_path']
+            form.jdbc_drv_clsname.data = d['jdbc_drv_clsname']
+
+   # from jinja2 import contextfunction
+   # @contextfunction
+   # def get_list_value(self, context, model, name):
+   #     if name == 'host' and model.conn_type == 'jdbc':
+   #         return model.extra_dejson.get('jdbc_conn_url')
+   #     else:
+   #         return super(ConnectionModelView,self).get_list_value(context,model,name)
+
 mv = ConnectionModelView(
     models.Connection, Session,
     name="Connections", category="Admin")
 admin.add_view(mv)
-
 
 class UserModelView(wwwutils.SuperUserMixin, AirflowModelView):
     verbose_name = "User"
