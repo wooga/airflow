@@ -26,8 +26,9 @@ the platform. Please send a PR with your company name and @githubhandle
 if you may.
 
 * Airbnb [@mistercrunch]
-* Lyft
 * Agari [@r39132]
+* Lyft
+* Wooga
 
 ## Documentation
 

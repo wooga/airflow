@@ -1592,6 +1592,7 @@ class ConnectionModelView(wwwutils.SuperUserMixin, AirflowModelView):
                         }
     form_choices = {
         'conn_type': [
+            ('exasol', 'Exasol',),
             ('ftp', 'FTP',),
             ('hdfs', 'HDFS',),
             ('http', 'HTTP',),
@@ -1671,7 +1672,7 @@ class ConfigurationView(wwwutils.SuperUserMixin, BaseView):
             )
             return self.render(
                 'airflow/code.html',
-                pre_subtitle=settings.HEADER + "  v" + airflow.__version__,
+                pre_subtitle=settings.HEADER + "  v" + airflow.__version__ + " by Wooga",
                 code_html=code_html, title=title, subtitle=subtitle)
 admin.add_view(ConfigurationView(name='Configuration', category="Admin"))
 

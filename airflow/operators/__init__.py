@@ -5,6 +5,7 @@ abstracting the underlying modules
 from airflow.utils import import_module_attrs as _import_module_attrs
 
 _operators = {
+    'exasol_operator': ['ExasolOperator'],
     'bash_operator': ['BashOperator'],
     'python_operator': ['PythonOperator', 'BranchPythonOperator'],
     'hive_operator': ['HiveOperator'],
@@ -15,6 +16,7 @@ _operators = {
     ],
     'dummy_operator': ['DummyOperator'],
     'email_operator': ['EmailOperator'],
+    'exasol_operator': ['ExasolOperator'],
     'hive_to_samba_operator': ['Hive2SambaOperator'],
     'mysql_operator': ['MySqlOperator'],
     'sqlite_operator': ['SqliteOperator'],
