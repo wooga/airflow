@@ -27,6 +27,10 @@ class AirflowException(Exception):
     pass
 
 
+class AirflowSensorTimeout(Exception):
+    pass
+
+
 class State(object):
     """
     Static class with task instance states constants and color method to
@@ -38,14 +42,18 @@ class State(object):
     SHUTDOWN = "shutdown"  # External request to shut down
     FAILED = "failed"
     UP_FOR_RETRY = "up_for_retry"
+    UPSTREAM_FAILED = "upstream_failed"
+    SKIPPED = "skipped"
 
     state_color = {
         QUEUED: 'gray',
         RUNNING: 'lime',
         SUCCESS: 'green',
-        SHUTDOWN: 'orange',
+        SHUTDOWN: 'blue',
         FAILED: 'red',
-        UP_FOR_RETRY: 'yellow',
+        UP_FOR_RETRY: 'gold',
+        UPSTREAM_FAILED: 'orange',
+        SKIPPED: 'pink',
     }
 
     @classmethod
@@ -54,7 +62,9 @@ class State(object):
 
     @classmethod
     def runnable(cls):
-        return [None, cls.FAILED, cls.UP_FOR_RETRY, cls.QUEUED]
+        return [
+            None, cls.FAILED, cls.UP_FOR_RETRY, cls.UPSTREAM_FAILED,
+            cls.SKIPPED]
 
 
 def pessimistic_connection_handling():
@@ -140,6 +150,24 @@ def initdb():
             models.Connection(
                 conn_id='sqlite_default', conn_type='sqlite',
                 host='{}/sqlite_default.db'.format(home)))
+        session.commit()
+
+    conn = session.query(C).filter(C.conn_id == 'http_default').first()
+    if not conn:
+        home = conf.get('core', 'AIRFLOW_HOME')
+        session.add(
+            models.Connection(
+                conn_id='http_default', conn_type='http',
+                host='http://www.google.com'))
+        session.commit()
+
+    conn = session.query(C).filter(C.conn_id == 'exasol').first()
+    if not conn:
+        session.add(
+            models.Connection(
+                conn_id='exasol', conn_type='exasol',
+                host='localhost',
+                port=8563))
         session.commit()
 
     # Known event types
@@ -349,9 +377,11 @@ def send_MIME_email(e_from, e_to, mime_msg):
     SMTP_PORT = conf.get('smtp', 'SMTP_PORT')
     SMTP_USER = conf.get('smtp', 'SMTP_USER')
     SMTP_PASSWORD = conf.get('smtp', 'SMTP_PASSWORD')
+    SMTP_STARTTLS = conf.getboolean('smtp', 'SMTP_STARTTLS')
 
     s = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
-    s.starttls()
+    if SMTP_STARTTLS:
+        s.starttls()
     if SMTP_USER and SMTP_PASSWORD:
         s.login(SMTP_USER, SMTP_PASSWORD)
     logging.info("Sent an alert email to " + str(e_to))
@@ -411,7 +441,7 @@ def TemporaryDirectory(suffix='', prefix=None, dir=None):
                     raise e
 
 
-class TimeoutError(Exception):
+class AirflowTaskTimeout(Exception):
     pass
 
 
@@ -422,11 +452,14 @@ class timeout:
     def __init__(self, seconds=1, error_message='Timeout'):
         self.seconds = seconds
         self.error_message = error_message
+
     def handle_timeout(self, signum, frame):
         logging.error("Process timed out")
-        raise TimeoutError(self.error_message)
+        raise AirflowTaskTimeout(self.error_message)
+
     def __enter__(self):
         signal.signal(signal.SIGALRM, self.handle_timeout)
         signal.alarm(self.seconds)
+
     def __exit__(self, type, value, traceback):
         signal.alarm(0)

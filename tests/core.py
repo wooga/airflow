@@ -1,11 +1,13 @@
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
+from time import sleep
 import unittest
 from airflow import configuration
 configuration.test_mode()
 from airflow import jobs, models, DAG, executors, utils, operators
 from airflow.www.app import app
+from airflow import utils
 
-NUM_EXAMPLE_DAGS = 3
+NUM_EXAMPLE_DAGS = 5
 DEV_NULL = '/dev/null'
 LOCAL_EXECUTOR = executors.LocalExecutor()
 DEFAULT_DATE = datetime(2015, 1, 1)
@@ -54,9 +56,7 @@ class HivePrestoTest(unittest.TestCase):
         args = {'owner': 'airflow', 'start_date': datetime(2015, 1, 1)}
         dag = DAG('hive_test', default_args=args)
         self.dag = dag
-
-    def test_hive(self):
-        hql = """
+        self.hql = """
         USE airflow;
         DROP TABLE IF EXISTS static_babynames_partitioned;
         CREATE TABLE IF NOT EXISTS static_babynames_partitioned (
@@ -70,7 +70,16 @@ class HivePrestoTest(unittest.TestCase):
             PARTITION(ds='{{ ds }}')
         SELECT state, year, name, gender, num FROM static_babynames;
         """
-        t = operators.HiveOperator(task_id='basic_hql', hql=hql, dag=self.dag)
+
+    def test_hive(self):
+        t = operators.HiveOperator(
+            task_id='basic_hql', hql=self.hql, dag=self.dag)
+        t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
+
+    def test_beeline(self):
+        t = operators.HiveOperator(
+            task_id='beeline_hql', hive_cli_conn_id='beeline_default',
+            hql=self.hql, dag=self.dag)
         t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
 
     def test_presto(self):
@@ -156,7 +165,18 @@ class CoreTest(unittest.TestCase):
             task_id='time_sensor_check',
             target_time=time(0),
             dag=self.dag)
-        t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
+        t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
+
+    def test_timeout(self):
+        t = operators.PythonOperator(
+            task_id='test_timeout',
+            execution_timeout=timedelta(seconds=2),
+            python_callable=lambda: sleep(10),
+            dag=self.dag)
+        self.assertRaises(
+            utils.AirflowTaskTimeout,
+            t.run,
+            start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
 
     def test_import_examples(self):
         self.assertEqual(len(self.dagbag.dags), NUM_EXAMPLE_DAGS)
@@ -335,6 +355,64 @@ if 'PostgresOperator' in dir(operators):
                 end_date=DEFAULT_DATE,
                 force=True)
 
+
+class HttpOpSensorTest(unittest.TestCase):
+
+    def setUp(self):
+        configuration.test_mode()
+        utils.initdb()
+        args = {'owner': 'airflow', 'start_date': datetime(2015, 1, 1)}
+        dag = DAG('http_test', default_args=args)
+        self.dag = dag
+
+    def test_get(self):
+        t = operators.SimpleHttpOperator(
+            task_id='get_op',
+            method='GET',
+            endpoint='/search',
+            data={"client": "ubuntu", "q": "airflow"},
+            headers={},
+            dag=self.dag)
+        t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
+
+    def test_get_response_check(self):
+        t = operators.SimpleHttpOperator(
+            task_id='get_op',
+            method='GET',
+            endpoint='/search',
+            data={"client": "ubuntu", "q": "airflow"},
+            response_check=lambda response: ("airbnb/airflow" in response.text),
+            headers={},
+            dag=self.dag)
+        t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
+
+    def test_sensor(self):
+        sensor = operators.HttpSensor(
+            task_id='http_sensor_check',
+            conn_id='http_default',
+            endpoint='/search',
+            params={"client": "ubuntu", "q": "airflow"},
+            headers={},
+            response_check=lambda response: ("airbnb/airflow" in response.text),
+            poke_interval=5,
+            timeout=15,
+            dag=self.dag)
+        sensor.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
+
+    def test_sensor_timeout(self):
+        sensor = operators.HttpSensor(
+            task_id='http_sensor_check',
+            conn_id='http_default',
+            endpoint='/search',
+            params={"client": "ubuntu", "q": "airflow"},
+            headers={},
+            response_check=lambda response: ("dingdong" in response.text),
+            poke_interval=2,
+            timeout=5,
+            dag=self.dag)
+        with self.assertRaises(utils.AirflowSensorTimeout):
+            sensor.run(
+                start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
 
 if __name__ == '__main__':
     unittest.main()

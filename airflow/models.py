@@ -15,7 +15,7 @@ import sys
 from sqlalchemy import (
     Column, Integer, String, DateTime, Text, Boolean, ForeignKey, PickleType,
     Index,)
-from sqlalchemy import func, or_
+from sqlalchemy import case, func, or_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects.mysql import LONGTEXT
 from sqlalchemy.orm import relationship
@@ -140,13 +140,12 @@ class DagBag(object):
         mod_name, file_ext = os.path.splitext(os.path.split(filepath)[-1])
         mod_name = 'unusual_prefix_' + mod_name
 
-        if safe_mode:
+        if safe_mode and os.path.isfile(filepath):
             # Skip file if no obvious references to airflow or DAG are found.
-            f = open(filepath, 'r')
-            content = f.read()
-            f.close()
-            if not all([s in content for s in ('DAG', 'airflow')]):
-                return
+            with open(filepath, 'r') as f:
+                content = f.read()
+                if not all([s in content for s in ('DAG', 'airflow')]):
+                    return
 
         if (
                 not only_if_updated or
@@ -313,7 +312,7 @@ class Connection(Base):
             elif self.conn_type == 'postgres':
                 return hooks.PostgresHook(postgres_conn_id=self.conn_id)
             elif self.conn_type == 'exasol':
-                return hooks.ExasolHook(exasol_conn_id=self.conn_id)
+                return hooks.ExasolHook(conn_id=self.conn_id)
             elif self.conn_type == 'hive_cli':
                 return hooks.HiveCliHook(hive_cli_conn_id=self.conn_id)
             elif self.conn_type == 'presto':
@@ -322,7 +321,9 @@ class Connection(Base):
                 return hooks.HiveServer2Hook(hiveserver2_conn_id=self.conn_id)
             elif self.conn_type == 'sqlite':
                 return hooks.SqliteHook(sqlite_conn_id=self.conn_id)
-        except:
+            elif self.conn_type == 'jdbc':
+                return hooks.JdbcHook(conn_id=self.conn_id)
+        except Exception:
             return None
 
     def __repr__(self):
@@ -443,7 +444,7 @@ class TaskInstance(Base):
         force = "--force" if force else ""
         local = "--local" if local else ""
         task_start_date = \
-            "-s " + task_start_date.isoformat()  if task_start_date else ""
+            "-s " + task_start_date.isoformat() if task_start_date else ""
         raw = "--raw" if raw else ""
         subdir = ""
         if not pickle and self.task.dag and self.task.dag.full_filepath:
@@ -478,6 +479,20 @@ class TaskInstance(Base):
             "?dag_id={self.dag_id}"
             "&task_id={self.task_id}"
             "&execution_date={iso}"
+        ).format(**locals())
+
+    @property
+    def mark_success_url(self):
+        iso = self.execution_date.isoformat()
+        BASE_URL = conf.get('webserver', 'BASE_URL')
+        return BASE_URL + (
+            "/admin/airflow/action"
+            "?action=success"
+            "&task_id={self.task_id}"
+            "&dag_id={self.dag_id}"
+            "&execution_date={iso}"
+            "&upstream=false"
+            "&downstream=false"
         ).format(**locals())
 
     def current_state(self, main_session=None):
@@ -541,13 +556,19 @@ class TaskInstance(Base):
         """
         return (self.dag_id, self.task_id, self.execution_date)
 
-    def is_queueable(self):
+    def is_queueable(self, flag_upstream_failed=False):
         """
         Returns a boolean on whether the task instance has met all dependencies
         and is ready to run. It considers the task's state, the state
         of its dependencies, depends_on_past and makes sure the execution
         isn't in the future. It doesn't take into
         account whether the pool has a slot for it to run.
+
+        :param flag_upstream_failed: This is a hack to generate
+            the upstream_failed state creation while checking to see
+            whether the task instance is runnable. It was the shortest
+            path to add the feature
+        :type flag_upstream_failed: boolean
         """
         if self.execution_date > datetime.now() - self.task.schedule_interval:
             return False
@@ -555,9 +576,12 @@ class TaskInstance(Base):
             return False
         elif self.task.end_date and self.execution_date > self.task.end_date:
             return False
+        elif self.state == State.SKIPPED:
+            return False
         elif (
                 self.state in State.runnable() and
-                self.are_dependencies_met()):
+                self.are_dependencies_met(
+                    flag_upstream_failed=flag_upstream_failed)):
             return True
         else:
             return False
@@ -597,10 +621,17 @@ class TaskInstance(Base):
             session.close()
         return count == len(task._downstream_list)
 
-    def are_dependencies_met(self, main_session=None):
+    def are_dependencies_met(
+            self, main_session=None, flag_upstream_failed=False):
         """
         Returns a boolean on whether the upstream tasks are in a SUCCESS state
         and considers depends_on_past and the previous run's state.
+
+        :param flag_upstream_failed: This is a hack to generate
+            the upstream_failed state creation while checking to see
+            whether the task instance is runnable. It was the shortest
+            path to add the feature
+        :type flag_upstream_failed: boolean
         """
         TI = TaskInstance
 
@@ -630,14 +661,39 @@ class TaskInstance(Base):
         # Checking that all upstream dependencies have succeeded
         if task._upstream_list:
             upstream_task_ids = [t.task_id for t in task._upstream_list]
-            ti = session.query(func.count(TI.task_id)).filter(
-                TI.dag_id == self.dag_id,
-                TI.task_id.in_(upstream_task_ids),
-                TI.execution_date == self.execution_date,
-                TI.state == State.SUCCESS,
+            qry = (
+                session
+                .query(
+                    func.sum(
+                        case([(TI.state == State.SUCCESS, 1)], else_=0)),
+                    func.sum(
+                        case([(TI.state == State.SKIPPED, 1)], else_=0)),
+                    func.count(TI.task_id),
+                )
+                .filter(
+                    TI.dag_id == self.dag_id,
+                    TI.task_id.in_(upstream_task_ids),
+                    TI.execution_date == self.execution_date,
+                    TI.state.in_([
+                        State.SUCCESS, State.FAILED,
+                        State.UPSTREAM_FAILED, State.SKIPPED]),
+                )
             )
-            count = ti[0][0]
-            if count < len(task._upstream_list):
+            successes, skipped, done = qry[0]
+            if flag_upstream_failed:
+                if skipped:
+                    self.state = State.SKIPPED
+                    self.start_date = datetime.now()
+                    self.end_date = datetime.now()
+                    session.merge(self)
+
+                elif successes < done >= len(task._upstream_list):
+                    self.state = State.UPSTREAM_FAILED
+                    self.start_date = datetime.now()
+                    self.end_date = datetime.now()
+                    session.merge(self)
+
+            if successes < len(task._upstream_list):
                 return False
 
         if not main_session:
@@ -699,17 +755,9 @@ class TaskInstance(Base):
         iso = datetime.now().isoformat()
         self.hostname = socket.gethostname()
 
-        msg = "\n"
-        msg += ("-" * 80)
-        if self.state == State.UP_FOR_RETRY:
-            msg += "\nRetry run {self.try_number} out of {task.retries} "
-            msg += "starting @{iso}\n"
-        else:
-            msg += "\nNew run starting @{iso}\n"
-        msg += ("-" * 80)
-        logging.info(msg.format(**locals()))
-
-        if not force and self.state == State.SUCCESS:
+        if self.state == State.RUNNING:
+            logging.warning("Another instance is running, skipping.")
+        elif not force and self.state == State.SUCCESS:
             logging.info(
                 "Task {self} previously succeeded"
                 " on {self.end_date}".format(**locals())
@@ -725,13 +773,24 @@ class TaskInstance(Base):
                 "Next run after {0}".format(next_run)
             )
         elif force or self.state in State.runnable():
+            msg = "\n" + ("-" * 80)
+            if self.state == State.UP_FOR_RETRY:
+                msg += "\nRetry run {self.try_number} out of {task.retries} "
+                msg += "starting @{iso}\n"
+            else:
+                msg += "\nNew run starting @{iso}\n"
+            msg += ("-" * 80)
+            logging.info(msg.format(**locals()))
+
             self.start_date = datetime.now()
-            if not force and task.pool and self.pool_full(session=session):
+            if not force and task.pool:
+                # If a pool is set for this task, marking the task instance
+                # as QUEUED
                 self.state = State.QUEUED
                 session.merge(self)
                 session.commit()
                 session.close()
-                logging.info("Pool {} is full, queuing".format(task.pool))
+                logging.info("Queuing into pool {}".format(task.pool))
                 return
             if self.state == State.UP_FOR_RETRY:
                 self.try_number += 1
@@ -749,11 +808,13 @@ class TaskInstance(Base):
                     msg = "Marking success for "
                 else:
                     msg = "Executing "
-                msg += "{self.task} for {self.execution_date}"
+                msg += "{self.task} on {self.execution_date}"
 
+            context = {}
             try:
                 logging.info(msg.format(self=self))
                 if not mark_success:
+                    context = self.get_template_context()
 
                     task_copy = copy.copy(task)
                     self.task = task_copy
@@ -766,13 +827,21 @@ class TaskInstance(Base):
                     signal.signal(signal.SIGTERM, signal_handler)
 
                     self.render_templates()
-                    context = self.get_template_context()
+                    settings.policy(task_copy)
                     task_copy.pre_execute(context=context)
-                    task_copy.execute(context=context)
+
+                    # If a timout is specified for the task, make it fail
+                    # if it goes beyond
+                    if task_copy.execution_timeout:
+                        with utils.timeout(int(
+                                task_copy.execution_timeout.total_seconds())):
+                            task_copy.execute(context=context)
+                    else:
+                        task_copy.execute(context=context)
                     task_copy.post_execute(context=context)
             except (Exception, StandardError, KeyboardInterrupt) as e:
-                self.record_failure(e, test_mode)
-                raise e
+                self.handle_failure(e, test_mode, context)
+                raise
 
             # Recording SUCCESS
             session = settings.Session()
@@ -783,9 +852,17 @@ class TaskInstance(Base):
                 session.add(Log(State.SUCCESS, self))
                 session.merge(self)
 
+            # Success callback
+            try:
+                if task.on_success_callback:
+                    task.on_success_callback(context)
+            except Exception as e3:
+                logging.error("Failed when executing success callback")
+                logging.exception(e3)
+
         session.commit()
 
-    def record_failure(self, error, test_mode=False):
+    def handle_failure(self, error, test_mode, context):
         logging.exception(error)
         task = self.task
         session = settings.Session()
@@ -807,7 +884,17 @@ class TaskInstance(Base):
         except Exception as e2:
             logging.error(
                 'Failed to send email to: ' + str(task.email))
-            logging.error(str(e2))
+            logging.exception(e2)
+
+        # Handling callbacks pessimistically
+        try:
+            if self.state == State.UP_FOR_RETRY and task.on_retry_callback:
+                task.on_retry_callback(context)
+            if self.state == State.FAILED and task.on_failure_callback:
+                task.on_failure_callback(context)
+        except Exception as e3:
+            logging.error("Failed at executing callback")
+            logging.exception(e3)
 
         if not test_mode:
             session.merge(self)
@@ -849,7 +936,8 @@ class TaskInstance(Base):
             'task': task,
             'task_instance': self,
             'ti': self,
-            'task_instance_key_str': ti_key_str
+            'task_instance_key_str': ti_key_str,
+            'conf': conf,
         }
 
     def render_templates(self):
@@ -870,7 +958,8 @@ class TaskInstance(Base):
                     result = [rt(s, jinja_context) for s in content]
                 elif isinstance(content, dict):
                     result = {
-                        k: rt(content[k], jinja_context) for k in content}
+                        k: rt(v, jinja_context)
+                        for k, v in content.item()}
                 else:
                     raise AirflowException("Type not supported for templating")
                 setattr(task, attr, result)
@@ -886,6 +975,7 @@ class TaskInstance(Base):
             "Log: <a href='{self.log_url}'>Link</a><br>"
             "Host: {self.hostname}<br>"
             "Log file: {self.log_filepath}<br>"
+            "Mark success: <a href='{self.mark_success_url}'>Link</a><br>"
         ).format(**locals())
         utils.send_email(task.email, title, body)
 
@@ -985,6 +1075,32 @@ class BaseOperator(object):
     :param pool: the slot pool this task should run in, slot pools are a
         way to limit concurrency for certain tasks
     :type pool: str
+    :param sla: time by which the job is expected to succeed. Note that
+        this represents the ``timedelta`` after the period is closed. For
+        example if you set an SLA of 1 hour, the scheduler would send dan email
+        soon after 1:00AM on the ``2016-01-02`` if the ``2016-01-01`` instance
+        has not succeede yet.
+        The scheduler pays special attention for jobs with an SLA and
+        sends alert
+        emails for sla misses. SLA misses are also recorded in the database
+        for future reference. All tasks that share the same SLA time
+        get bundled in a single email, sent soon after that time. SLA
+        notification are sent once and only once for each task instance.
+    :type sla: datetime.timedelta
+    :param execution_timeout: max time allowed for the execution of
+        this task instance, if it goes beyond it will raise and fail.
+    :type execution_timeout: datetime.timedelta
+    :param on_failure_callback: a function to be called when a task instance
+        of this task fails. a context dictionary is passed as a single
+        parameter to this function. Context contains references to related
+        objects to the task instance and is documented under the macros
+        section of the API.
+    :type on_failure_callback: callable
+    :param on_retry_callback: much like the ``on_failure_callback`` excepts
+        that it is executed when retries occur.
+    :param on_success_callback: much like the ``on_failure_callback`` excepts
+        that it is executed when the task succeeds.
+    :type on_success_callback: callable
     """
 
     # For derived classes to define which fields will get jinjaified
@@ -1017,6 +1133,11 @@ class BaseOperator(object):
             priority_weight=1,
             queue=conf.get('celery', 'default_queue'),
             pool=None,
+            sla=None,
+            execution_timeout=None,
+            on_failure_callback=None,
+            on_success_callback=None,
+            on_retry_callback=None,
             *args,
             **kwargs):
 
@@ -1035,10 +1156,15 @@ class BaseOperator(object):
         self.retries = retries
         self.queue = queue
         self.pool = pool
+        self.sla = sla
+        self.execution_timeout = execution_timeout
+        self.on_failure_callback = on_failure_callback
+        self.on_success_callback = on_success_callback
+        self.on_retry_callback = on_retry_callback
         if isinstance(retry_delay, timedelta):
             self.retry_delay = retry_delay
         else:
-            logging.info("retry_delay isn't timedelta object, assuming secs")
+            logging.debug("retry_delay isn't timedelta object, assuming secs")
             self.retry_delay = timedelta(seconds=retry_delay)
         self.params = params or {}  # Available in templates!
         self.adhoc = adhoc
@@ -1115,6 +1241,23 @@ class BaseOperator(object):
         ghost processes behind.
         '''
         pass
+
+    def __deepcopy__(self, memo):
+        """
+        Hack sorting double chained task lists by task_id to avoid hitting
+        max_depth on deepcopy operations.
+        """
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+
+        self._upstream_list = sorted(self._upstream_list, key=lambda x: x.task_id)
+        self._downstream_list = sorted(self._downstream_list, key=lambda x: x.task_id)
+        for k, v in self.__dict__.items():
+            if k not in ('user_defined_macros', 'params'):
+                setattr(result, k, copy.deepcopy(v, memo))
+
+        return result
 
     def render_template(self, content, context):
         if hasattr(self, 'dag'):
@@ -1281,10 +1424,12 @@ class BaseOperator(object):
             l.append(item)
 
     def _set_relatives(self, task_or_task_list, upstream=False):
-        if isinstance(task_or_task_list, BaseOperator):
-            task_or_task_list = [task_or_task_list]
-        for task in task_or_task_list:
-            if not isinstance(task_or_task_list, list):
+        try:
+            task_list = list(task_or_task_list)
+        except TypeError:
+            task_list = [task_or_task_list]
+        for task in task_list:
+            if not isinstance(task, BaseOperator):
                 raise AirflowException('Expecting a task')
             if upstream:
                 self.append_only_new(task._downstream_list, self)
@@ -1510,7 +1655,8 @@ class DAG(object):
         self.get_task(upstream_task_id).set_downstream(
             self.get_task(downstream_task_id))
 
-    def get_task_instances(self, session, start_date=None, end_date=None):
+    def get_task_instances(
+            self, session, start_date=None, end_date=None, state=None):
         TI = TaskInstance
         if not start_date:
             start_date = (datetime.today()-timedelta(30)).date()
@@ -1521,7 +1667,11 @@ class DAG(object):
             TI.dag_id == self.dag_id,
             TI.execution_date >= start_date,
             TI.execution_date <= end_date,
-        ).all()
+            TI.task_id.in_([t.task_id for t in self.tasks]),
+        )
+        if state:
+            tis = tis.filter(TI.state == state)
+        tis = tis.all()
         return tis
 
     @property
@@ -1636,6 +1786,9 @@ class DAG(object):
                 ut for ut in t._downstream_list if utils.is_in(ut, tasks)]
 
         return dag
+
+    def has_task(self, task_id):
+        return task_id in (t.task_id for t in self.tasks)
 
     def get_task(self, task_id):
         for task in self.tasks:
@@ -1874,3 +2027,23 @@ class Pool(Base):
         """
         used_slots = self.used_slots(session=session)
         return self.slots - used_slots
+
+
+class SlaMiss(Base):
+    """
+    Model that stores a history of the SLA that have been missed.
+    It is used to keep track of SLA failures over time and to avoid double
+    triggering alert emails.
+    """
+    __tablename__ = "sla_miss"
+
+    task_id = Column(String(ID_LEN), primary_key=True)
+    dag_id = Column(String(ID_LEN), primary_key=True)
+    execution_date = Column(DateTime, primary_key=True)
+    email_sent = Column(Boolean, default=False)
+    timestamp = Column(DateTime)
+    description = Column(Text)
+
+    def __repr__(self):
+        return str((
+            self.dag_id, self.task_id, self.execution_date.isoformat()))

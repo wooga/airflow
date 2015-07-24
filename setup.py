@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 # Kept manually in sync with airflow.__version__
-version = '1.1.1'
+version = '1.2.0'
 
 doc = [
     'sphinx>=1.2.3',
@@ -18,7 +18,9 @@ mysql = ['mysql-python>=1.2.5']
 postgres = ['psycopg2>=2.6']
 optional = ['librabbitmq>=1.6.1']
 samba = ['pysmbclient>=0.1.3']
+druid = ['pydruid>=0.2.1']
 s3 = ['boto>=2.36.0']
+jdbc = ['jaydebeapi>=0.2.0']
 
 all_dbs = postgres + mysql + hive
 devel = all_dbs + doc + samba + s3 + ['nose']
@@ -64,6 +66,8 @@ setup(
         'postgres': postgres,
         's3': s3,
         'samba': samba,
+        'druid': druid,
+        'jdbc': jdbc,
     },
     author='Maxime Beauchemin',
     author_email='maximebeauchemin@gmail.com',
