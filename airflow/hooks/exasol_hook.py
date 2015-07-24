@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import logging
 import random
 import jaydebeapi
@@ -9,18 +8,11 @@ from airflow.utils import AirflowException
 
 
 class ExasolHook(object):
-=======
-from airflow.hooks.jdbc_hook import JdbcHook
-
-
-class ExasolHook(JdbcHook):
->>>>>>> 335b54a7703dce9749c92e5cc28c647c70d28328
     """
     Interact with Exasol
     """
 
     def __init__(
-<<<<<<< HEAD
             self, host=None, login=None,
             psw=None, db=None, port=None, exasol_conn_id=None):
         if not exasol_conn_id:
@@ -83,9 +75,3 @@ class ExasolHook(JdbcHook):
         conn.commit()
         cur.close()
         conn.close()
-=======
-            self, jdbc_url='jdbc:exa:{0}:{1};schema={2}',
-                  jdbc_driver_name = 'com.exasol.jdbc.EXADriver',
-                  jdbc_driver_loc='/var/exasol/exajdbc.jar', *args, **kwargs):
-        super(ExasolHook, self).__init__(jdbc_url=jdbc_url, jdbc_driver_name=jdbc_driver_name,jdbc_driver_loc=jdbc_driver_loc, *args, **kwargs)
->>>>>>> 335b54a7703dce9749c92e5cc28c647c70d28328

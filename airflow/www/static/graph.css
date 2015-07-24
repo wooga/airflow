@@ -10,7 +10,7 @@ g.node.success rect {
     stroke: green;
 }
 g.node.up_for_retry rect {
-    stroke: gold;
+    stroke: yellow;
 }
 g.node.running rect{
     stroke: lime;
@@ -19,13 +19,7 @@ g.node.failed rect {
     stroke: red;
 }
 g.node.shutdown rect{
-    stroke: blue;
-}
-g.node.upstream_failed rect{
     stroke: orange;
-}
-g.node.skipped rect{
-    stroke: pink;
 }
 div#svg_container {
  border: 1px solid black;

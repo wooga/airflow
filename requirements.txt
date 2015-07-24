@@ -20,7 +20,6 @@ nose
 pandas
 pygments
 pyhive
-pydruid
 PySmbClient
 python-dateutil
 pyhs2
@@ -35,4 +34,3 @@ sphinx_rtd_theme
 Sphinx-PyPI-upload
 sqlalchemy
 thrift
-jaydebeapi

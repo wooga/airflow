@@ -2,7 +2,6 @@ import copy
 from datetime import datetime, timedelta
 import dateutil.parser
 from functools import wraps
-import inspect
 import json
 import logging
 import os
@@ -129,8 +128,6 @@ attr_renderer = {
     'doc_rst': lambda x: pygment_html_render(x, lexers.RstLexer),
     'doc_yaml': lambda x: pygment_html_render(x, lexers.YamlLexer),
     'doc_md': wrapped_markdown,
-    'python_callable': lambda x: pygment_html_render(
-        inspect.getsource(x), lexers.PythonLexer),
 }
 
 
@@ -556,8 +553,7 @@ class Airflow(BaseView):
             if chart.y_log_scale:
                 hc['yAxis']['type'] = 'logarithmic'
                 hc['yAxis']['minorTickInterval'] = 0.1
-                if 'min' in hc['yAxis']:
-                    del hc['yAxis']['min']
+                del hc['yAxis']['min']
 
             payload['state'] = 'SUCCESS'
             payload['hc'] = hc
@@ -574,7 +570,6 @@ class Airflow(BaseView):
     def chart(self):
         session = settings.Session()
         chart_id = request.args.get('chart_id')
-        embed = request.args.get('embed')
         chart = session.query(models.Chart).filter_by(id=chart_id).all()[0]
         session.expunge_all()
         session.commit()
@@ -594,20 +589,12 @@ class Airflow(BaseView):
             chart=chart,
             title="Airflow - Chart",
             sql=sql,
-            label=chart.label,
-            embed=embed)
+            label=chart.label)
 
     @expose('/dag_stats')
     @login_required
     def dag_stats(self):
-        states = [
-            State.SUCCESS,
-            State.RUNNING,
-            State.FAILED,
-            State.UPSTREAM_FAILED,
-            State.UP_FOR_RETRY,
-            State.QUEUED,
-        ]
+        states = [State.SUCCESS, State.RUNNING, State.FAILED]
         task_ids = []
         for dag in dagbag.dags.values():
             task_ids += dag.task_ids
@@ -657,7 +644,6 @@ class Airflow(BaseView):
             code, lexers.PythonLexer(), HtmlFormatter(linenos=True))
         return self.render(
             'airflow/dag_code.html', html_code=html_code, dag=dag, title=title,
-            root=request.args.get('root'),
             demo_mode=conf.getboolean('webserver', 'demo_mode'))
 
     @app.errorhandler(404)
@@ -1082,8 +1068,8 @@ class Airflow(BaseView):
         if root:
             dag = dag.sub_dag(
                 task_regex=root,
-                include_upstream=True,
-                include_downstream=False)
+                include_downstream=False,
+                include_upstream=True)
 
         nodes = []
         edges = []
@@ -1165,18 +1151,11 @@ class Airflow(BaseView):
         from_date = (datetime.today()-timedelta(days)).date()
         from_date = datetime.combine(from_date, datetime.min.time())
 
-        root = request.args.get('root')
-        if root:
-            dag = dag.sub_dag(
-                task_regex=root,
-                include_upstream=True,
-                include_downstream=False)
-
         all_data = []
         for task in dag.tasks:
             data = []
             for ti in task.get_task_instances(session, from_date):
-                if ti.duration:
+                if ti.end_date:
                     data.append([
                         ti.execution_date.isoformat(),
                         float(ti.duration) / (60*60)
@@ -1194,7 +1173,6 @@ class Airflow(BaseView):
             chart_options={'yAxis': {'title': {'text': 'hours'}}},
             height="700px",
             demo_mode=conf.getboolean('webserver', 'demo_mode'),
-            root=root,
         )
 
     @expose('/landing_times')
@@ -1206,13 +1184,6 @@ class Airflow(BaseView):
         dag = dagbag.get_dag(dag_id)
         from_date = (datetime.today()-timedelta(days)).date()
         from_date = datetime.combine(from_date, datetime.min.time())
-
-        root = request.args.get('root')
-        if root:
-            dag = dag.sub_dag(
-                task_regex=root,
-                include_upstream=True,
-                include_downstream=False)
 
         all_data = []
         for task in dag.tasks:
@@ -1237,7 +1208,6 @@ class Airflow(BaseView):
             height="700px",
             chart_options={'yAxis': {'title': {'text': 'hours after 00:00'}}},
             demo_mode=conf.getboolean('webserver', 'demo_mode'),
-            root=root,
         )
 
     @expose('/refresh')
@@ -1274,13 +1244,6 @@ class Airflow(BaseView):
         dag_id = request.args.get('dag_id')
         dag = dagbag.get_dag(dag_id)
         demo_mode = conf.getboolean('webserver', 'demo_mode')
-
-        root = request.args.get('root')
-        if root:
-            dag = dag.sub_dag(
-                task_regex=root,
-                include_upstream=True,
-                include_downstream=False)
 
         dttm = request.args.get('execution_date')
         if dttm:
@@ -1343,7 +1306,6 @@ class Airflow(BaseView):
             hc=json.dumps(hc, indent=4),
             height=height,
             demo_mode=demo_mode,
-            root=root,
         )
 
     @expose('/variables/<form>', methods=["GET", "POST"])
@@ -1352,6 +1314,7 @@ class Airflow(BaseView):
         try:
             if request.method == 'POST':
                 data = request.json
+                print data
                 if data:
                     session = settings.Session()
                     var = models.Variable(key=form, val=json.dumps(data))
@@ -1379,7 +1342,7 @@ class QueryView(wwwutils.DataProfilingMixin, BaseView):
             models.Connection.conn_id).all()
         session.expunge_all()
         db_choices = list(
-            ((db.conn_id, db.conn_id) for db in dbs if db.get_hook()))
+            {(db.conn_id, db.conn_id) for db in dbs if db.get_hook()})
         conn_id_str = request.args.get('conn_id')
         csv = request.args.get('csv') == "true"
         sql = request.args.get('sql')
@@ -1436,14 +1399,7 @@ class QueryView(wwwutils.DataProfilingMixin, BaseView):
 admin.add_view(QueryView(name='Ad Hoc Query', category="Data Profiling"))
 
 
-class AirflowModelView(ModelView):
-    list_template = 'airflow/model_list.html'
-    edit_template = 'airflow/model_edit.html'
-    create_template = 'airflow/model_create.html'
-    page_size = 500
-
-
-class ModelViewOnly(wwwutils.LoginMixin, AirflowModelView):
+class ModelViewOnly(wwwutils.LoginMixin, ModelView):
     """
     Modifying the base ModelView class for non edit, browse only operations
     """
@@ -1479,25 +1435,16 @@ def task_instance_link(v, c, m, p):
         execution_date=m.execution_date.isoformat())
     return Markup(
         """
-        <span style="white-space: nowrap;">
         <a href="{url}">{m.task_id}</a>
         <a href="{url_root}" title="Filter on this task and upstream">
         <span class="glyphicon glyphicon-filter" style="margin-left: 0px;"
             aria-hidden="true"></span>
         </a>
-        </span>
         """.format(**locals()))
 
 
-def state_f(v, c, m, p):
-    color = State.color(m.state)
-    return Markup(
-        '<span class="label" style="background-color:{color};">'
-        '{m.state}</span>'.format(**locals()))
-
-
 def duration_f(v, c, m, p):
-    if m.end_date and m.duration:
+    if m.end_date:
         return timedelta(seconds=m.duration)
 
 
@@ -1513,48 +1460,31 @@ def nobr_f(v, c, m, p):
     return Markup("<nobr>{}</nobr>".format(getattr(m, p)))
 
 
-
-
 class JobModelView(ModelViewOnly):
-    verbose_name_plural = "jobs"
-    verbose_name = "job"
     column_default_sort = ('start_date', True)
     column_filters = (
         'job_type', 'dag_id', 'state',
         'unixname', 'hostname', 'start_date', 'end_date', 'latest_heartbeat')
-    column_formatters = dict(
-        start_date=datetime_f,
-        end_date=datetime_f,
-        hostname=nobr_f,
-        state=state_f,
-        latest_heartbeat=datetime_f)
 mv = JobModelView(jobs.BaseJob, Session, name="Jobs", category="Browse")
 admin.add_view(mv)
 
 
 class LogModelView(ModelViewOnly):
-    verbose_name_plural = "logs"
-    verbose_name = "log"
     column_default_sort = ('dttm', True)
     column_filters = ('dag_id', 'task_id', 'execution_date')
-    column_formatters = dict(
-        dttm=datetime_f, execution_date=datetime_f, dag_id=dag_link)
 mv = LogModelView(
     models.Log, Session, name="Logs", category="Browse")
 admin.add_view(mv)
 
 
 class TaskInstanceModelView(ModelViewOnly):
-    verbose_name_plural = "task instances"
-    verbose_name = "task instance"
     column_filters = (
-        'state', 'dag_id', 'task_id', 'execution_date', 'hostname',
+        'dag_id', 'task_id', 'state', 'execution_date', 'hostname',
         'queue', 'pool')
     named_filter_urls = True
     column_formatters = dict(
         log=log_link, task_id=task_instance_link,
         hostname=nobr_f,
-        state=state_f,
         execution_date=datetime_f,
         start_date=datetime_f,
         end_date=datetime_f,
@@ -1562,25 +1492,21 @@ class TaskInstanceModelView(ModelViewOnly):
     column_searchable_list = ('dag_id', 'task_id', 'state')
     column_default_sort = ('start_date', True)
     column_list = (
-        'state', 'dag_id', 'task_id', 'execution_date',
-        'start_date', 'end_date', 'duration', 'job_id', 'hostname',
+        'dag_id', 'task_id', 'execution_date',
+        'start_date', 'end_date', 'duration', 'state', 'job_id', 'hostname',
         'unixname', 'priority_weight', 'log')
     can_delete = True
-    page_size = 500
+    page_size = 100
 mv = TaskInstanceModelView(
     models.TaskInstance, Session, name="Task Instances", category="Browse")
 admin.add_view(mv)
 
 mv = DagModelView(
-    models.DagModel, Session, name=None)
+    models.DagModel, Session, name="DAGs", category="Admin")
 admin.add_view(mv)
-# Hack to not add this view to the menu
-admin._menu = admin._menu[:-1]
 
 
-class ConnectionModelView(wwwutils.SuperUserMixin, AirflowModelView):
-    verbose_name = "Connection"
-    verbose_name_plural = "Connections"
+class ConnectionModelView(wwwutils.SuperUserMixin, ModelView):
     column_default_sort = ('conn_id', False)
     column_list = ('conn_id', 'conn_type', 'host', 'port')
     form_overrides = dict(password=VisiblePasswordField)
@@ -1589,11 +1515,9 @@ class ConnectionModelView(wwwutils.SuperUserMixin, AirflowModelView):
             ('exasol', 'Exasol',),
             ('ftp', 'FTP',),
             ('hdfs', 'HDFS',),
-            ('http', 'HTTP',),
             ('hive_cli', 'Hive Client Wrapper',),
             ('hive_metastore', 'Hive Metastore Thrift',),
             ('hiveserver2', 'Hive Server 2 Thrift',),
-            ('jdbc', 'Jdbc Connection',),
             ('mysql', 'MySQL',),
             ('postgres', 'Postgres',),
             ('oracle', 'Oracle',),
@@ -1609,9 +1533,7 @@ mv = ConnectionModelView(
 admin.add_view(mv)
 
 
-class UserModelView(wwwutils.SuperUserMixin, AirflowModelView):
-    verbose_name = "User"
-    verbose_name_plural = "Users"
+class UserModelView(wwwutils.SuperUserMixin, ModelView):
     column_default_sort = 'username'
 mv = UserModelView(models.User, Session, name="Users", category="Admin")
 admin.add_view(mv)
@@ -1657,9 +1579,7 @@ def label_link(v, c, m, p):
     return Markup("<a href='{url}'>{m.label}</a>".format(**locals()))
 
 
-class ChartModelView(wwwutils.DataProfilingMixin, AirflowModelView):
-    verbose_name = "chart"
-    verbose_name_plural = "charts"
+class ChartModelView(wwwutils.DataProfilingMixin, ModelView):
     form_columns = (
         'label',
         'owner',
@@ -1772,9 +1692,7 @@ admin.add_link(
         url='https://github.com/airbnb/airflow'))
 
 
-class KnowEventView(wwwutils.DataProfilingMixin, AirflowModelView):
-    verbose_name = "known event"
-    verbose_name_plural = "known events"
+class KnowEventView(wwwutils.DataProfilingMixin, ModelView):
     form_columns = (
         'label',
         'event_type',
@@ -1790,7 +1708,7 @@ mv = KnowEventView(
 admin.add_view(mv)
 
 
-class KnowEventTypeView(wwwutils.DataProfilingMixin, AirflowModelView):
+class KnowEventTypeView(wwwutils.DataProfilingMixin, ModelView):
     pass
 
 '''
@@ -1808,9 +1726,7 @@ admin.add_view(mv)
 '''
 
 
-class VariableView(wwwutils.LoginMixin, AirflowModelView):
-    verbose_name = "Variable"
-    verbose_name_plural = "Variables"
+class VariableView(wwwutils.LoginMixin, ModelView):
     column_list = ('key',)
     column_filters = ('key', 'val')
     column_searchable_list = ('key', 'val')
@@ -1842,11 +1758,11 @@ def fqueued_slots(v, c, m, p):
     url = (
         '/admin/taskinstance/' +
         '?flt1_pool_equals=' + m.pool +
-        '&flt2_state_equals=queued&sort=10&desc=1')
+        '&flt2_state_equals=queued')
     return Markup("<a href='{0}'>{1}</a>".format(url, m.queued_slots()))
 
 
-class PoolModelView(wwwutils.SuperUserMixin, AirflowModelView):
+class PoolModelView(wwwutils.SuperUserMixin, ModelView):
     column_list = ('pool', 'slots', 'used_slots', 'queued_slots')
     column_formatters = dict(
         pool=pool_link, used_slots=fused_slots, queued_slots=fqueued_slots)
@@ -1854,28 +1770,6 @@ class PoolModelView(wwwutils.SuperUserMixin, AirflowModelView):
 mv = PoolModelView(models.Pool, Session, name="Pools", category="Admin")
 admin.add_view(mv)
 
-
-class SlaMissModelView(wwwutils.SuperUserMixin, AirflowModelView):
-    verbose_name_plural = "SLA misses"
-    verbose_name = "SLA miss"
-    column_list = (
-        'dag_id', 'task_id', 'execution_date', 'email_sent', 'timestamp')
-    column_formatters = dict(
-        task_id=task_instance_link,
-        execution_date=datetime_f,
-        timestamp=datetime_f,
-        dag_id=dag_link)
-    named_filter_urls = True
-    column_searchable_list = ('dag_id', 'task_id',)
-    column_filters = (
-        'dag_id', 'task_id', 'email_sent', 'timestamp', 'execution_date')
-    form_widget_args = {
-        'email_sent': {'disabled': True},
-        'timestamp': {'disabled': True},
-    }
-mv = SlaMissModelView(
-    models.SlaMiss, Session, name="SLA Misses", category="Browse")
-admin.add_view(mv)
 
 
 def integrate_plugins():

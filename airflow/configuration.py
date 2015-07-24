@@ -34,9 +34,6 @@ defaults = {
     'celery': {
         'default_queue': 'default',
     },
-    'smtp': {
-        'smtp_starttls': True,
-    },
 }
 
 DEFAULT_CONFIG = """\
@@ -95,7 +92,6 @@ secret_key = temporary_key
 # the airflow.utils.send_email function, you have to configure an smtp
 # server here
 smtp_host = localhost
-smtp_starttls = True
 smtp_user = airflow
 smtp_port = 25
 smtp_password = airflow

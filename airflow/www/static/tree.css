@@ -35,16 +35,7 @@ rect.queued {
     fill: gray;
 }
 rect.shutdown {
-    fill: blue;
-}
-rect.upstream_failed {
     fill: orange;
-}
-rect.up_for_retry {
-    fill: gold;
-}
-rect.skipped {
-    fill: pink;
 }
 .tooltip.in {
     opacity: 1;
