@@ -27,8 +27,8 @@ class ExasolOperator(BaseOperator):
     @apply_defaults
     def __init__(
             self, sql,
-            exasol_conn_id='exasol_default', autocommit=False,
-            retries=17, retry_delay=timedelta(seconds=600),
+            exasol_conn_id='exasol_default', autocommit=True,
+            retries=35, retry_delay=timedelta(seconds=300),
             *args, **kwargs):
         super(ExasolOperator, self).__init__(retries=retries, retry_delay=retry_delay, *args, **kwargs)
 

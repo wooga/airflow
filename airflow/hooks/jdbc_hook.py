@@ -57,7 +57,7 @@ class JdbcHook(BaseHook):
                                   self.jdbc_driver_loc,)
         return conn
 
-    def get_records(self, sql, autocommit=False):
+    def get_records(self, sql, autocommit=True):
         '''
         Executes the sql and returns a set of records.
         '''
