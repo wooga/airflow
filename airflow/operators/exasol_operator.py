@@ -38,6 +38,6 @@ class ExasolOperator(BaseOperator):
 
     def execute(self, context):
         logging.info('Executing: ' + self.sql)
-        self.hook = JdbcHookconn_id=self.exasol_conn_id)
+        self.hook = JdbcHook(conn_id=self.exasol_conn_id)
         for row in self.hook.get_records(self.sql, self.autocommit):
             logging.info('Result: ' + ','.join(map(str,row)) )
