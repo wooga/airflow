@@ -1,7 +1,7 @@
 import logging
 from datetime import timedelta
 
-from airflow.hooks import ExasolHook
+from airflow.hooks import JdbcHook
 from airflow.models import BaseOperator
 from airflow.utils import apply_defaults
 
