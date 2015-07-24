@@ -3,26 +3,44 @@ Code / API
 
 Operators
 ---------
-Operators allows to generate a certain type of task that become a node in
+Operators allow for generation of certain types of tasks that become nodes in
 the DAG when instantiated. All operators derive from BaseOperator and
-inherit a whole lot of attributes and method that way. Refer to the
-BaseOperator documentation for more details.
+inherit many attributes and methods that way. Refer to the BaseOperator
+documentation for more details.
 
 There are 3 main types of operators:
 
-- Operators that performs an **action**, or tells another system to
+- Operators that performs an **action**, or tell another system to
   perform an action
-- **Transfer** operators move data from a system to another
-- **Sensors** are a certain type of operators that will keep running until a
-  certain criteria is met. Things like a specific file landing in HDFS or
+- **Transfer** operators move data from one system to another
+- **Sensors** are a certain type of operator that will keep running until a
+  certain criterion is met. Examples include a specific file landing in HDFS or
   S3, a partition appearing in Hive, or a specific time of the day. Sensors
   are derived from ``BaseSensorOperator`` and run a poke
   method at a specified ``poke_interval`` until it returns ``True``.
+
+BaseOperator
+''''''''''''
+All operators are derived from ``BaseOperator`` and acquire much
+functionality through inheritance. Since this is the core of the engine,
+it's worth taking the time to understand the parameters of ``BaseOperator``
+to understand the primitive features that can be leveraged in your
+DAGs.
+
+.. automodule:: airflow.operators
+    :show-inheritance:
+    :members:
+        BaseOperator,
+
+
+Operator API
+''''''''''''
 
 .. automodule:: airflow.operators
     :show-inheritance:
     :members:
         BashOperator,
+        BranchPythonOperator,
         DummyOperator,
         EmailOperator,
         ExternalTaskSensor,
@@ -31,6 +49,8 @@ There are 3 main types of operators:
         HiveOperator,
         HivePartitionSensor,
         HiveToMySqlTransfer,
+        SimpleHttpOperator,
+        HttpSensor,
         MySqlOperator,
         MySqlToHiveTransfer,
         PostgresOperator,
@@ -73,12 +93,16 @@ Variable                            Description
 ``{{ params }}``                    a reference to the user defined params dictionary
 ``{{ task_instance_key_str }}``     a unique, human readable key to the task instance
                                     formatted ``{dag_id}_{task_id}_{ds}``
+``conf``                            the full configuration object located at
+                                    ``airflow.configuration.conf`` which
+                                    represents the content of your
+                                    ``airflow.cfg``
 =================================   ====================================
 
-Note that you can access the objects attributes and methods with simple
+Note that you can access the object's attributes and methods with simple
 dot notation. Here are some examples of what is possible:
 ``{{ task.owner }}``, ``{{ task.task_id }}``, ``{{ ti.hostname }}``, ...
-Refer to the models documentation for more information on the objects
+Refer to the models documentation for more information on the objects'
 attributes and methods.
 
 Macros
@@ -98,7 +122,7 @@ These macros live under the ``macros`` namespace in your templates.
 Models
 ------
 
-Models are built on top of th SQLAlchemy ORM Base class, instance are
+Models are built on top of th SQLAlchemy ORM Base class, and instances are
 persisted in the database.
 
 
@@ -110,7 +134,7 @@ Hooks
 -----
 .. automodule:: airflow.hooks
     :show-inheritance:
-    :members: MySqlHook, PostgresHook, PrestoHook, HiveCliHook, HiveServer2Hook, HiveMetastoreHook, S3Hook, SqliteHook
+    :members: MySqlHook, PostgresHook, PrestoHook, HiveCliHook, HiveServer2Hook, HiveMetastoreHook, HttpHook, S3Hook, SqliteHook
 
 Executors
 ---------
