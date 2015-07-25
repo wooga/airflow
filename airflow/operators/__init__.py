@@ -43,6 +43,7 @@ _operators = {
     'http_operator': ['SimpleHttpOperator'],
     'hive_to_druid': ['HiveToDruidTransfer'],
     'jdbc_operator': ['JdbcOperator'],
+    'exasol_operator': ['ExasolOperator'],
 }
 
 _import_module_attrs(globals(), _operators)
