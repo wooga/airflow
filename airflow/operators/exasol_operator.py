@@ -7,3 +7,7 @@ class ExasolOperator(JdbcOperator):
     """
     Alias for backwards compatibility
     """
+    @apply_defaults
+    def __init__(self, exasol_conn_id='exasol_default', *args, **kwargs):
+        super(ExasolOperator,self).__init__(jdbc_conn_id=exasol_conn_id, *args,**kwargs)
+
