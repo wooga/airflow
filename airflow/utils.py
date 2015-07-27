@@ -161,15 +161,6 @@ def initdb():
                 host='http://www.google.com'))
         session.commit()
 
-    conn = session.query(C).filter(C.conn_id == 'exasol').first()
-    if not conn:
-        session.add(
-            models.Connection(
-                conn_id='exasol', conn_type='exasol',
-                host='localhost',
-                port=8563))
-        session.commit()
-
     # Known event types
     KET = models.KnownEventType
     if not session.query(KET).filter(KET.know_event_type == 'Holiday').first():
