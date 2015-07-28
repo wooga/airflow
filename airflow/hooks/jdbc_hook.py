@@ -68,7 +68,7 @@ class JdbcHook(DbApiHook):
                                   self.jdbc_driver_loc,)
         return conn
 
-    def run(self, sql, autocommit=False, parameters=None):
+    def run(self, sql, autocommit=True, parameters=None):
         """
         Runs a command
         """
