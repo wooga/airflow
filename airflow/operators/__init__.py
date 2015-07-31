@@ -40,6 +40,7 @@ _operators = {
         'HttpSensor'
     ],
     'subdag_operator': ['SubDagOperator'],
+    'subschedule_operator': ['SubScheduleOperator'],
     'hive_stats_operator': ['HiveStatsCollectionOperator'],
     's3_to_hive_operator': ['S3ToHiveTransfer'],
     'hive_to_mysql': ['HiveToMySqlTransfer'],
