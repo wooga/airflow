@@ -31,9 +31,7 @@ class SubScheduleOperator(BaseOperator):
 
         if not isinstance(dt, datetime):
             logging.error("execution_date=%s is not a datetime object" % dt)
-            return False
-
-        if self.condition(dt):
+        elif self.condition(dt):
             logging.info("Condition satisfied")
             logging.info("Continue with downstream tasks")
             return
