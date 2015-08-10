@@ -1,5 +1,7 @@
+from builtins import str
+from past.builtins import basestring
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 import getpass
 import logging
 import signal
@@ -200,10 +202,15 @@ class SchedulerJob(BaseJob):
             subdir=None,
             test_mode=False,
             refresh_dags_every=10,
+            num_runs=None,
             *args, **kwargs):
+
         self.dag_id = dag_id
         self.subdir = subdir
-        self.test_mode = test_mode
+        if test_mode:
+            self.num_runs = 1
+        else:
+            self.num_runs = num_runs
         self.refresh_dags_every = refresh_dags_every
         super(SchedulerJob, self).__init__(*args, **kwargs)
 
@@ -420,7 +427,7 @@ class SchedulerJob(BaseJob):
             else:
                 d[ti.pool].append(ti)
 
-        for pool, tis in d.items():
+        for pool, tis in list(d.items()):
             open_slots = pools[pool].open_slots(session=session)
             if open_slots > 0:
                 tis = sorted(
@@ -457,7 +464,8 @@ class SchedulerJob(BaseJob):
         executor = dagbag.executor
         executor.start()
         i = 0
-        while (not self.test_mode) or i < 1:
+        while not self.num_runs or self.num_runs > i:
+            loop_start_dttm = datetime.now()
             try:
                 self.prioritize_queued(executor=executor, dagbag=dagbag)
             except Exception as e:
@@ -491,8 +499,19 @@ class SchedulerJob(BaseJob):
                     self.manage_slas(dag)
                 except Exception as e:
                     logging.exception(e)
-            logging.debug(
+            logging.info(
                 "Done queuing tasks, calling the executor's heartbeat")
+            duration_sec = (datetime.now() - loop_start_dttm).total_seconds()
+            logging.info("Loop took: {} seconds".format(duration_sec))
+            try:
+                dag_sizes = sorted(
+                    [(sys.getsizeof(dag), dag.dag_id) for dag in dags],
+                    key=lambda x: x[0],
+                    reverse=True,
+                )
+                logging.debug("DAG sizes: " + str(dag_sizes))
+            except:
+                logging.error("Failed at getting DAG sizes")
             try:
                 # We really just want the scheduler to never ever stop.
                 executor.heartbeat()
@@ -500,7 +519,7 @@ class SchedulerJob(BaseJob):
             except Exception as e:
                 logging.exception(e)
                 logging.error("Tachycardia!")
-        executor.end()
+
 
     def heartbeat_callback(self):
         if statsd:
@@ -576,7 +595,7 @@ class BackfillJob(BaseJob):
 
         # Triggering what is ready to get triggered
         while tasks_to_run:
-            for key, ti in tasks_to_run.items():
+            for key, ti in list(tasks_to_run.items()):
                 ti.refresh_from_db()
                 if ti.state == State.SUCCESS and key in tasks_to_run:
                     succeeded.append(key)
@@ -595,7 +614,7 @@ class BackfillJob(BaseJob):
             executor.heartbeat()
 
             # Reacting to events
-            for key, state in executor.get_event_buffer().items():
+            for key, state in list(executor.get_event_buffer().items()):
                 dag_id, task_id, execution_date = key
                 if key not in tasks_to_run:
                     continue
