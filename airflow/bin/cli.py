@@ -324,7 +324,7 @@ def resetdb(args):
 
 
 def version(args):
-    print(settings.HEADER + "  v" + airflow.__version__ + " by Wooga")
+    print(settings.HEADER + "  v" + airflow.__version__ + " by Wooga@" + airflow.__date__)
 
 
 def flower(args):

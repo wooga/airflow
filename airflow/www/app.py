@@ -1681,7 +1681,7 @@ class ConfigurationView(wwwutils.SuperUserMixin, BaseView):
             )
             return self.render(
                 'airflow/code.html',
-                pre_subtitle=settings.HEADER + "  v" + airflow.__version__ + " by Wooga",
+                pre_subtitle=settings.HEADER + "  v" + airflow.__version__ + " by Wooga@" + airflow.__date__,
                 code_html=code_html, title=title, subtitle=subtitle)
 admin.add_view(ConfigurationView(name='Configuration', category="Admin"))
 
