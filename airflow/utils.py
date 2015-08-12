@@ -2,6 +2,7 @@ from __future__ import print_function
 from builtins import str
 from builtins import input
 from builtins import object
+from past.builtins import basestring
 from copy import copy
 from datetime import datetime, timedelta
 from email.mime.text import MIMEText
@@ -357,7 +358,7 @@ def ask_yesno(question):
 def send_email(to, subject, html_content):
     SMTP_MAIL_FROM = conf.get('smtp', 'SMTP_MAIL_FROM')
 
-    if isinstance(to, str) or isinstance(to, str):
+    if isinstance(to, basestring):
         if ',' in to:
             to = to.split(',')
         elif ';' in to:
@@ -466,3 +467,10 @@ class timeout(object):
 
     def __exit__(self, type, value, traceback):
         signal.alarm(0)
+
+
+def round_time(dt, delta):
+    delta = delta.total_seconds()
+    seconds = (dt - dt.min).seconds
+    rounding = (seconds + delta / 2) // delta * delta
+    return dt + timedelta(0, rounding - seconds, -dt.microsecond)
