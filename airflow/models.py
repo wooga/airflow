@@ -1,3 +1,7 @@
+from __future__ import print_function
+from builtins import str
+from past.builtins import basestring
+from builtins import object
 import copy
 from datetime import datetime, timedelta
 import getpass
@@ -14,7 +18,7 @@ import sys
 
 from sqlalchemy import (
     Column, Integer, String, DateTime, Text, Boolean, ForeignKey, PickleType,
-    Index,)
+    Index, BigInteger)
 from sqlalchemy import case, func, or_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.dialects.mysql import LONGTEXT
@@ -92,12 +96,13 @@ class DagBag(object):
         self.sync_to_db = sync_to_db
         self.file_last_changed = {}
         self.executor = executor
-        self.collect_dags(dag_folder)
+        self.import_errors = {}
         if include_examples:
             example_dag_folder = os.path.join(
                 os.path.dirname(__file__),
                 'example_dags')
             self.collect_dags(example_dag_folder)
+        self.collect_dags(dag_folder)
         if sync_to_db:
             self.deactivate_inactive_dags()
 
@@ -157,13 +162,14 @@ class DagBag(object):
                     del sys.modules[mod_name]
                 with utils.timeout(30):
                     m = imp.load_source(mod_name, filepath)
-            except:
+            except Exception as e:
                 logging.error("Failed to import: " + filepath)
-                logging.exception("")
+                self.import_errors[filepath] = e
+                logging.exception(e)
                 self.file_last_changed[filepath] = dttm
                 return
 
-            for dag in m.__dict__.values():
+            for dag in list(m.__dict__.values()):
                 if isinstance(dag, DAG):
                     dag.full_filepath = filepath
                     dag.is_subdag = False
@@ -179,6 +185,9 @@ class DagBag(object):
         self.dags[dag.dag_id] = dag
         dag.resolve_template_files()
         dag.last_loaded = datetime.now()
+
+        for task in dag.tasks:
+            settings.policy(task)
 
         if self.sync_to_db:
             session = settings.Session()
@@ -235,14 +244,15 @@ class DagBag(object):
                             os.path.split(filepath)[-1])
                         if file_ext != '.py':
                             continue
-                        if not any([re.findall(p, filepath) for p in patterns]):
+                        if not any(
+                                [re.findall(p, filepath) for p in patterns]):
                             self.process_file(
                                 filepath, only_if_updated=only_if_updated)
                     except:
                         pass
 
     def deactivate_inactive_dags(self):
-        active_dag_ids = [dag.dag_id for dag in self.dags.values()]
+        active_dag_ids = [dag.dag_id for dag in list(self.dags.values())]
         session = settings.Session()
         for dag in session.query(
                 DagModel).filter(~DagModel.dag_id.in_(active_dag_ids)).all():
@@ -271,7 +281,7 @@ class BaseUser(Base):
         return self.username
 
     def get_id(self):
-        return unicode(self.id)
+        return str(self.id)
 
 
 class Connection(Base):
@@ -359,7 +369,7 @@ class DagPickle(Base):
     id = Column(Integer, primary_key=True)
     pickle = Column(PickleType(pickler=dill))
     created_dttm = Column(DateTime, default=func.now())
-    pickle_hash = Column(Integer)
+    pickle_hash = Column(BigInteger)
 
     __tablename__ = "dag_pickle"
 
@@ -828,7 +838,6 @@ class TaskInstance(Base):
                     signal.signal(signal.SIGTERM, signal_handler)
 
                     self.render_templates()
-                    settings.policy(task_copy)
                     task_copy.pre_execute(context=context)
 
                     # If a timout is specified for the task, make it fail
@@ -840,7 +849,7 @@ class TaskInstance(Base):
                     else:
                         task_copy.execute(context=context)
                     task_copy.post_execute(context=context)
-            except (Exception, StandardError, KeyboardInterrupt) as e:
+            except (Exception, KeyboardInterrupt) as e:
                 self.handle_failure(e, test_mode, context)
                 raise
 
@@ -960,9 +969,13 @@ class TaskInstance(Base):
                 elif isinstance(content, dict):
                     result = {
                         k: rt(v, jinja_context)
-                        for k, v in content.items()}
+                        for k, v in list(content.items())}
                 else:
-                    raise AirflowException("Type not supported for templating")
+                    param_type = type(content)
+                    msg = (
+                        "Type '{param_type}' used for parameter '{attr}' is "
+                        "not supported for templating").format(**locals())
+                    raise AirflowException(msg)
                 setattr(task, attr, result)
 
     def email_alert(self, exception, is_retry=False):
@@ -1051,8 +1064,6 @@ class BaseOperator(object):
     :type start_date: datetime
     :param end_date: if specified, the scheduler won't go beyond this date
     :type end_date: datetime
-    :param schedule_interval: interval at which to schedule the task
-    :type schedule_interval: timedelta
     :param depends_on_past: when set to true, task instances will run
         sequentially while relying on the previous task's schedule to
         succeed. The task instance for the start_date is allowed to run.
@@ -1124,7 +1135,7 @@ class BaseOperator(object):
             retry_delay=timedelta(seconds=300),
             start_date=None,
             end_date=None,
-            schedule_interval=timedelta(days=1),
+            schedule_interval=timedelta(days=1),  # not hooked as of now
             depends_on_past=False,
             wait_for_downstream=False,
             dag=None,
@@ -1254,7 +1265,7 @@ class BaseOperator(object):
 
         self._upstream_list = sorted(self._upstream_list, key=lambda x: x.task_id)
         self._downstream_list = sorted(self._downstream_list, key=lambda x: x.task_id)
-        for k, v in self.__dict__.items():
+        for k, v in list(self.__dict__.items()):
             if k not in ('user_defined_macros', 'params'):
                 setattr(result, k, copy.deepcopy(v, memo))
 
@@ -1574,12 +1585,18 @@ class DAG(object):
 
     @property
     def filepath(self):
+        """
+        File location of where the dag object is instantiated
+        """
         fn = self.full_filepath.replace(DAGS_FOLDER + '/', '')
         fn = fn.replace(os.path.dirname(__file__) + '/', '')
         return fn
 
     @property
     def folder(self):
+        """
+        Folder location of where the dag object is instantiated
+        """
         return os.path.dirname(self.full_filepath)
 
     @property
@@ -1588,6 +1605,9 @@ class DAG(object):
 
     @property
     def latest_execution_date(self):
+        """
+        Returns the latest date for which at least one task instance exists
+        """
         TI = TaskInstance
         session = settings.Session()
         execution_date = session.query(func.max(TI.execution_date)).filter(
@@ -1600,6 +1620,9 @@ class DAG(object):
 
     @property
     def subdags(self):
+        """
+        Returns a list of the subdag objects associated to this DAG
+        """
         # Late import to prevent circular imports
         from airflow.operators import SubDagOperator
         l = []
@@ -1748,7 +1771,7 @@ class DAG(object):
         cls = self.__class__
         result = cls.__new__(cls)
         memo[id(self)] = result
-        for k, v in self.__dict__.items():
+        for k, v in list(self.__dict__.items()):
             if k not in ('user_defined_macros', 'params'):
                 setattr(result, k, copy.deepcopy(v, memo))
 
@@ -1836,7 +1859,7 @@ class DAG(object):
         Shows an ascii tree representation of the DAG
         """
         def get_downstream(task, level=0):
-            print (" " * level * 4) + str(task)
+            print((" " * level * 4) + str(task))
             level += 1
             for t in task.upstream_list:
                 get_downstream(t, level)
@@ -2048,3 +2071,11 @@ class SlaMiss(Base):
     def __repr__(self):
         return str((
             self.dag_id, self.task_id, self.execution_date.isoformat()))
+
+
+class ImportError(Base):
+    __tablename__ = "import_error"
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime)
+    filename = Column(String(1024))
+    stacktrace = Column(Text)

@@ -1,3 +1,7 @@
+from __future__ import print_function
+from __future__ import division
+from builtins import str
+from past.utils import old_div
 import copy
 from datetime import datetime, timedelta
 import dateutil.parser
@@ -262,6 +266,11 @@ class HomeView(AdminIndexView):
         DM = models.DagModel
         qry = session.query(DM).filter(~DM.is_subdag, DM.is_active).all()
         orm_dags = {dag.dag_id: dag for dag in qry}
+        import_errors = session.query(models.ImportError).all()
+        for ie in import_errors:
+            flash(
+                "Broken DAG: [{ie.filename}] {ie.stacktrace}".format(ie=ie),
+                "error")
         session.expunge_all()
         session.commit()
         session.close()
@@ -511,8 +520,9 @@ class Airflow(BaseView):
                     series.append({
                         'name': col,
                         'data': [
-                            (i, v)
-                            for i, v in df[col].iteritems() if not np.isnan(v)]
+                            (k, df[col][k])
+                            for k in df[col].keys()
+                            if not np.isnan(df[col][k])]
                     })
                 series = [serie for serie in sorted(
                     series, key=lambda s: s['data'][0][1], reverse=True)]
@@ -706,7 +716,7 @@ class Airflow(BaseView):
     @expose('/logout')
     def logout(self):
         logout_user()
-        return redirect('/admin/dagmodel/')
+        return redirect(url_for('admin.index'))
 
     @expose('/rendered')
     @login_required
@@ -992,14 +1002,21 @@ class Airflow(BaseView):
             base_date = datetime.now()
         else:
             base_date = dateutil.parser.parse(base_date)
+        base_date = utils.round_time(base_date, dag.schedule_interval)
+
+        start_date = dag.start_date
+        if not start_date and 'start_date' in dag.default_args:
+            start_date = dag.default_args['start_date']
+
+        if start_date:
+            difference = base_date - start_date
+            offset = timedelta(seconds=int(difference.total_seconds() % dag.schedule_interval.total_seconds()))
+            base_date -= offset
+            base_date -= timedelta(microseconds=base_date.microsecond)
 
         num_runs = request.args.get('num_runs')
         num_runs = int(num_runs) if num_runs else 25
-        from_time = datetime.min.time()
-        if dag.start_date:
-            from_time = dag.start_date.time()
-        from_date = (base_date-(num_runs * dag.schedule_interval)).date()
-        from_date = datetime.combine(from_date, from_time)
+        from_date = (base_date - (num_runs * dag.schedule_interval))
 
         dates = utils.date_range(
             from_date, base_date, dag.schedule_interval)
@@ -1069,6 +1086,7 @@ class Airflow(BaseView):
 
     @expose('/graph')
     @login_required
+    @wwwutils.gzipped
     def graph(self):
         session = settings.Session()
         dag_id = request.args.get('dag_id')
@@ -1221,10 +1239,10 @@ class Airflow(BaseView):
             for ti in task.get_task_instances(session, from_date):
                 if ti.end_date:
                     data.append([
-                        ti.execution_date.isoformat(), (
+                        ti.execution_date.isoformat(), old_div((
                             ti.end_date - (
                                 ti.execution_date + task.schedule_interval)
-                        ).total_seconds()/(60*60)
+                        ).total_seconds(),(60*60))
                     ])
             all_data.append({'data': data, 'name': task.task_id})
 
@@ -1586,9 +1604,15 @@ class ConnectionModelView(wwwutils.SuperUserMixin, AirflowModelView):
     column_default_sort = ('conn_id', False)
     column_list = ('conn_id', 'conn_type', 'host', 'port')
     form_overrides = dict(password=VisiblePasswordField)
-    form_extra_fields = { 'jdbc_drv_path' : StringField('Driver Path'),
-                          'jdbc_drv_clsname': StringField('Driver Class'),
-                        }
+    # Used to customized the form, the forms elements get rendered
+    # and results are stored in the extra field as json. All of these
+    # need to be prefixed with extra__ and then the conn_type ___ as in
+    # extra__{conn_type}__name. You can also hide form elements and rename
+    # others from the connection_form.js file
+    form_extra_fields = {
+        'extra__jdbc__drv_path' : StringField('Driver Path'),
+        'extra__jdbc__drv_clsname': StringField('Driver Class'),
+    }
     form_choices = {
         'conn_type': [
             ('ftp', 'FTP',),
@@ -1607,24 +1631,27 @@ class ConnectionModelView(wwwutils.SuperUserMixin, AirflowModelView):
             ('sqlite', 'Sqlite',),
             ('mssql', 'Microsoft SQL Server'),
         ]
-
     }
 
     def on_model_change(self, form, model, is_created):
         formdata = form.data
-        if formdata['conn_type'] == 'jdbc':
-            jdbc = {key:formdata[key] for key in ('jdbc_drv_path','jdbc_drv_clsname'
-                                                  #, 'jdbc_conn_url'
-                                                   ) if key in formdata}
-            model.extra = json.dumps(jdbc)
+        if formdata['conn_type'] in ['jdbc']:
+            extra = {
+                key:formdata[key]
+                for key in self.form_extra_fields.keys() if key in formdata}
+            model.extra = json.dumps(extra)
 
     def on_form_prefill(self, form, id):
-        data = form.data
-        if 'extra' in data and data['extra'] != None:
-            d = json.loads(data['extra'])
-           #form.jdbc_conn_url.data = d['jdbc_conn_url']
-            form.jdbc_drv_path.data = d['jdbc_drv_path']
-            form.jdbc_drv_clsname.data = d['jdbc_drv_clsname']
+        try:
+            d = json.loads(form.data.get('extra', '{}'))
+        except Exception as e:
+            d = {}
+
+        for field in list(self.form_extra_fields.keys()):
+            value = d.get(field, '')
+            if value:
+                field = getattr(form, field)
+                field.data = value
 
 mv = ConnectionModelView(
     models.Connection, Session,
@@ -1666,7 +1693,7 @@ class ConfigurationView(wwwutils.SuperUserMixin, BaseView):
             )
             return self.render(
                 'airflow/code.html',
-                pre_subtitle=settings.HEADER + "  v" + airflow.__version__ + " by Wooga",
+                pre_subtitle=settings.HEADER + "  v" + airflow.__version__ + " by Wooga@" + airflow.__date__,
                 code_html=code_html, title=title, subtitle=subtitle)
 admin.add_view(ConfigurationView(name='Configuration', category="Admin"))
 
@@ -1880,7 +1907,7 @@ mv = PoolModelView(models.Pool, Session, name="Pools", category="Admin")
 admin.add_view(mv)
 
 
-class SlaMissModelView(wwwutils.SuperUserMixin, AirflowModelView):
+class SlaMissModelView(wwwutils.SuperUserMixin, ModelViewOnly):
     verbose_name_plural = "SLA misses"
     verbose_name = "SLA miss"
     column_list = (
@@ -1910,7 +1937,7 @@ def integrate_plugins():
     for v in admin_views:
         admin.add_view(v)
     for bp in flask_blueprints:
-        print bp
+        print(bp)
         app.register_blueprint(bp)
     for ml in menu_links:
         admin.add_link(ml)

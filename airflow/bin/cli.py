@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+from __future__ import print_function
+from builtins import input
 import argparse
 import dateutil.parser
 from datetime import datetime
@@ -134,9 +136,9 @@ def run(args):
                 session.add(pickle)
                 session.commit()
                 pickle_id = pickle.id
-                print(
+                print((
                     'Pickled dag {dag} '
-                    'as pickle_id:{pickle_id}').format(**locals())
+                    'as pickle_id:{pickle_id}').format(**locals()))
             except Exception as e:
                 print('Could not pickle the DAG')
                 print(e)
@@ -169,7 +171,7 @@ def task_state(args):
     dag = dagbag.dags[args.dag_id]
     task = dag.get_task(task_id=args.task_id)
     ti = TaskInstance(task, args.execution_date)
-    print ti.current_state()
+    print(ti.current_state())
 
 
 def list_dags(args):
@@ -254,7 +256,10 @@ def webserver(args):
 def scheduler(args):
     print(settings.HEADER)
     log_to_stdout()
-    job = jobs.SchedulerJob(args.dag_id, args.subdir)
+    job = jobs.SchedulerJob(
+        dag_id=args.dag_id,
+        subdir=args.subdir,
+        num_runs=args.num_runs)
     job.run()
 
 
@@ -308,7 +313,7 @@ def initdb(args):
 
 def resetdb(args):
     print("DB: " + conf.get('core', 'SQL_ALCHEMY_CONN'))
-    if raw_input(
+    if input(
             "This will drop existing tables if they exist. "
             "Proceed? (y/n)").upper() == "Y":
         logging.basicConfig(level=settings.LOGGING_LEVEL,
@@ -319,7 +324,7 @@ def resetdb(args):
 
 
 def version(args):
-    print(settings.HEADER + "  v" + airflow.__version__ + " by Wooga")
+    print(settings.HEADER + "  v" + airflow.__version__ + " by Wooga@" + airflow.__date__)
 
 
 def flower(args):
@@ -482,6 +487,11 @@ def get_parser():
     parser_scheduler.add_argument(
         "-sd", "--subdir", help=subdir_help,
         default=DAGS_FOLDER)
+    parser_scheduler.add_argument(
+        "-n", "--num_runs",
+        default=None,
+        type=int,
+        help="Set the number of runs to execute before exiting")
     parser_scheduler.set_defaults(func=scheduler)
 
     ht = "Initialize the metadata database"
