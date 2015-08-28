@@ -6,7 +6,7 @@ in their PYTHONPATH. airflow_login should be based off the
 """
 from builtins import object
 __version__ = "1.5.0"
-__date__ = "2015-08-12"
+__date__ = "2015-08-28"
 
 import logging
 import os
