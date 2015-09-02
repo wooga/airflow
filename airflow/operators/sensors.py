@@ -382,6 +382,26 @@ class TimeDeltaSensor(BaseSensorOperator):
         return datetime.now() > target_dttm
 
 
+class SleepSensor(BaseSensorOperator):
+    """
+    Sleeps for the defined amount of seconds.
+
+    :param delta: seconds to sleep before succeeding
+    :type delta: int
+    """
+    template_fields = tuple()
+
+    @apply_defaults
+    def __init__(self, delta, *args, **kwargs):
+        super(SleepSensor, self).__init__(*args, **kwargs)
+        self.delta = delta
+
+    def poke(self, context):
+        logging.info('Sleeping for {0} seconds'.format(self.delta))
+        sleep(self.delta)
+        return True
+
+
 class HttpSensor(BaseSensorOperator):
     """
     Executes a HTTP get statement and returns False on failure:
