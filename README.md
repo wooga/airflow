@@ -31,14 +31,14 @@ if you may.
 Currently **officialy** using Airflow:
 
 * Airbnb [@mistercrunch]
-* Agari [@r39132]
+* Agari [@r39132](https://github.com/r39132)
 * [Cotap](https://github.com/cotap/) [[@maraca](https://github.com/maraca) & [@richardchew](https://github.com/richardchew)]
 * Lyft
 * Stripe [@jbalogh]
 * Wooga
 * Xoom [[@gepser](https://github.com/gepser) & [@omarvides](https://github.com/omarvides)]
 * Yahoo!
-* [Jampp](https://github.com/jampphq)
+* [Jampp](https://github.com/jampp)
 
 ## Links 
 
@@ -47,3 +47,4 @@ Currently **officialy** using Airflow:
 * [Airbnb Blog Post about Airflow](http://nerds.airbnb.com/airflow/)
 * [Hadoop Summit Airflow Video](https://www.youtube.com/watch?v=oYp49mBwH60)
 * [Docker Airflow (externally maintained)](https://github.com/puckel/docker-airflow)
+* [Airflow at Agari Blog Post](http://agari.com/blog/airflow-agari)

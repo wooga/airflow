@@ -230,7 +230,7 @@ def clear(args):
         end_date=args.end_date,
         only_failed=args.only_failed,
         only_running=args.only_running,
-        confirm_prompt=True)
+        confirm_prompt=not args.no_confirm)
 
 
 def webserver(args):
@@ -335,6 +335,7 @@ def version(args):
 
 def flower(args):
     broka = conf.get('celery', 'BROKER_URL')
+    args.port = args.port or conf.get('celery', 'FLOWER_PORT')
     port = '--port=' + args.port
     api = ''
     if args.broker_api:
@@ -409,6 +410,8 @@ def get_parser():
     parser_clear.add_argument(
         "-sd", "--subdir", help=subdir_help,
         default=DAGS_FOLDER)
+    parser_clear.add_argument(
+        "-c", "--no_confirm", help=ht, action="store_true")
     parser_clear.set_defaults(func=clear)
 
     ht = "Run a single task instance"
@@ -552,8 +555,7 @@ def get_parser():
     ht = "Start a Celery Flower"
     parser_flower = subparsers.add_parser('flower', help=ht)
     parser_flower.add_argument(
-        "-p", "--port", help="The port",
-        default=conf.get('celery', 'FLOWER_PORT'))
+        "-p", "--port", help="The port")
     parser_flower.add_argument(
         "-a", "--broker_api", help="Broker api")
     parser_flower.set_defaults(func=flower)

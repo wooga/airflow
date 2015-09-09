@@ -38,6 +38,15 @@ class AirflowSensorTimeout(Exception):
     pass
 
 
+class TriggerRule(object):
+    ALL_SUCCESS = 'all_success'
+    ALL_FAILED = 'all_failed'
+    ALL_DONE = 'all_done'
+    ONE_SUCCESS = 'one_success'
+    ONE_FAILED = 'one_failed'
+    DUMMY = 'dummy'
+
+
 class State(object):
     """
     Static class with task instance states constants and color method to
@@ -393,7 +402,7 @@ def send_email(to, subject, html_content):
 
 def send_MIME_email(e_from, e_to, mime_msg):
     SMTP_HOST = conf.get('smtp', 'SMTP_HOST')
-    SMTP_PORT = conf.get('smtp', 'SMTP_PORT')
+    SMTP_PORT = conf.getint('smtp', 'SMTP_PORT')
     SMTP_USER = conf.get('smtp', 'SMTP_USER')
     SMTP_PASSWORD = conf.get('smtp', 'SMTP_PASSWORD')
     SMTP_STARTTLS = conf.getboolean('smtp', 'SMTP_STARTTLS')

@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 import sys
 
 # Kept manually in sync with airflow.__version__
-version = '1.5.0'
+version = '1.5.1'
 
 doc = [
     'sphinx>=1.2.3',
@@ -26,9 +26,10 @@ mssql = ['pymssql>=2.1.1', 'unicodecsv>=0.13.0']
 hdfs = ['snakebite>=2.4.13']
 slack = ['slackclient>=0.15']
 crypto = ['cryptography>=0.9.3']
+oracle = ['cx_Oracle>=5.1.2']
 
 all_dbs = postgres + mysql + hive + mssql + hdfs
-devel = all_dbs + doc + samba + s3 + ['nose'] + slack + crypto
+devel = all_dbs + doc + samba + s3 + ['nose'] + slack + crypto + oracle
 
 setup(
     name='airflow',
@@ -78,6 +79,7 @@ setup(
         'samba': samba,
         'slack': slack,
         'crypto': crypto,
+        'oracle': oracle,
     },
     author='Maxime Beauchemin',
     author_email='maximebeauchemin@gmail.com',
