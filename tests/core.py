@@ -1,15 +1,14 @@
 from datetime import datetime, time, timedelta
+import os
 from time import sleep
 import unittest
 from airflow import configuration
 configuration.test_mode()
-from airflow import jobs, models, DAG, executors, utils, operators
+from airflow import jobs, models, DAG, executors, utils, operators, hooks
 from airflow.www.app import app
-from airflow import utils
 
 NUM_EXAMPLE_DAGS = 6
 DEV_NULL = '/dev/null'
-LOCAL_EXECUTOR = executors.LocalExecutor()
 DEFAULT_DATE = datetime(2015, 1, 1)
 TEST_DAG_ID = 'unit_tests'
 configuration.test_mode()
@@ -19,8 +18,6 @@ try:
 except ImportError:
     # Python 3
     import pickle
-
-#utils.initdb()
 
 
 class TransferTests(unittest.TestCase):
@@ -40,6 +37,22 @@ class TransferTests(unittest.TestCase):
             sql=sql,
             hive_table='airflow.test_mysql_to_hive',
             recreate=True,
+            dag=self.dag)
+        t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
+
+    def test_mysql_to_mysql(self):
+        sql = "SELECT * FROM task_instance LIMIT 1000;"
+        t = operators.GenericTransfer(
+            task_id='test_m2m',
+            preoperator=[
+                "DROP TABLE IF EXISTS test_mysql_to_mysql",
+                "CREATE TABLE IF NOT EXISTS "
+                    "test_mysql_to_mysql LIKE task_instance"
+            ],
+            source_conn_id='airflow_db',
+            destination_conn_id='airflow_db',
+            destination_table="test_mysql_to_mysql",
+            sql=sql,
             dag=self.dag)
         t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
 
@@ -101,7 +114,7 @@ class HivePrestoTest(unittest.TestCase):
     def test_hdfs_sensor(self):
         t = operators.HdfsSensor(
             task_id='hdfs_sensor_check',
-            filepath='/user/hive/warehouse/airflow.db/static_babynames',
+            filepath='hdfs://user/hive/warehouse/airflow.db/static_babynames',
             dag=self.dag)
         t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
 
@@ -141,13 +154,17 @@ class HivePrestoTest(unittest.TestCase):
         t = operators.HiveToMySqlTransfer(
             mysql_conn_id='airflow_db',
             task_id='hive_to_mysql_check',
+            create=True,
             sql="""
-            SELECT name, count(*) as ccount
+            SELECT name
             FROM airflow.static_babynames
-            GROUP BY name
+            LIMIT 100
             """,
             mysql_table='test_static_babynames',
-            mysql_preoperator='TRUNCATE TABLE test_static_babynames;',
+            mysql_preoperator=[
+                'DROP TABLE IF EXISTS test_static_babynames;',
+                'CREATE TABLE test_static_babynames (name VARCHAR(500))',
+            ],
             dag=self.dag)
         t.clear(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE)
         t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
@@ -224,7 +241,8 @@ class CoreTest(unittest.TestCase):
             args = parser.parse_args(['list_tasks', dag_id])
             cli.list_tasks(args)
 
-        args = parser.parse_args(['list_tasks', 'example_bash_operator', '--tree'])
+        args = parser.parse_args([
+            'list_tasks', 'example_bash_operator', '--tree'])
         cli.list_tasks(args)
 
         cli.initdb(parser.parse_args(['initdb']))
@@ -294,6 +312,18 @@ class CoreTest(unittest.TestCase):
             utils.AirflowTaskTimeout,
             t.run,
             start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
+
+    def test_python_op(self):
+        def test_py_op(templates_dict, ds, **kwargs):
+            if not templates_dict['ds'] == ds:
+                raise Exception("failure")
+        t = operators.PythonOperator(
+            task_id='test_py_op',
+            provide_context=True,
+            python_callable=test_py_op,
+            templates_dict={'ds': "{{ ds }}"},
+            dag=self.dag)
+        t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
 
     def test_import_examples(self):
         self.assertEqual(len(self.dagbag.dags), NUM_EXAMPLE_DAGS)
@@ -421,7 +451,9 @@ class WebUiTests(unittest.TestCase):
         response = self.app.get(
             "/admin/airflow/refresh?dag_id=example_bash_operator")
         response = self.app.get("/admin/airflow/refresh_all")
-        response = self.app.get("/admin/airflow/paused?dag_id=example_python_operator&is_paused=false")
+        response = self.app.get(
+            "/admin/airflow/paused?"
+            "dag_id=example_python_operator&is_paused=false")
 
     def test_charts(self):
         response = self.app.get(
@@ -440,7 +472,11 @@ if 'MySqlOperator' in dir(operators):
 
         def setUp(self):
             configuration.test_mode()
-            args = {'owner': 'airflow', 'start_date': datetime(2015, 1, 1)}
+            args = {
+                'owner': 'airflow',
+                'mysql_conn_id': 'airflow_db',
+                'start_date': datetime(2015, 1, 1)
+            }
             dag = DAG(TEST_DAG_ID, default_args=args)
             self.dag = dag
 
@@ -451,8 +487,23 @@ if 'MySqlOperator' in dir(operators):
             );
             """
             t = operators.MySqlOperator(
-                task_id='basic_mysql', sql=sql, dag=self.dag)
+                task_id='basic_mysql',
+                sql=sql,
+                mysql_conn_id='airflow_db',
+                dag=self.dag)
             t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
+
+        def mysql_operator_test_multi(self):
+            sql = [
+                "TRUNCATE TABLE test_airflow",
+                "INSERT INTO test_airflow VALUES ('X')",
+            ]
+            t = operators.MySqlOperator(
+                task_id='mysql_operator_test_multi',
+                mysql_conn_id='airflow_db',
+                sql=sql, dag=self.dag)
+            t.run(start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
+
 
 if 'PostgresOperator' in dir(operators):
     # Only testing if the operator is installed
@@ -541,6 +592,56 @@ class HttpOpSensorTest(unittest.TestCase):
         with self.assertRaises(utils.AirflowSensorTimeout):
             sensor.run(
                 start_date=DEFAULT_DATE, end_date=DEFAULT_DATE, force=True)
+
+
+class ConnectionTest(unittest.TestCase):
+
+    def setUp(self):
+        configuration.test_mode()
+        utils.initdb()
+        os.environ['AIRFLOW_CONN_TEST_URI'] = \
+            'postgres://username:password@ec2.compute.com:5432/the_database'
+
+    def test_using_env_var(self):
+        c = hooks.PostgresHook.get_connection(conn_id='test_uri')
+        assert c.host == 'ec2.compute.com'
+        assert c.schema == 'the_database'
+        assert c.login == 'username'
+        assert c.password == 'password'
+        assert c.port == 5432
+
+    def test_using_unix_socket_env_var(self):
+        c = hooks.PostgresHook.get_connection(conn_id='test_uri')
+        assert c.host == '/var/postgresql'
+        assert c.schema == 'the_database'
+        assert c.login is None
+        assert c.password is None
+        assert c.port is None
+
+    def test_param_setup(self):
+        c = models.Connection(conn_id='local_mysql', conn_type='mysql',
+                              host='localhost', login='airflow',
+                              password='airflow', schema='airflow')
+        assert c.host == 'localhost'
+        assert c.schema == 'airflow'
+        assert c.login == 'airflow'
+        assert c.password == 'airflow'
+        assert c.port is None
+
+    def test_env_var_priority(self):
+        c = hooks.PostgresHook.get_connection(conn_id='airflow_db')
+        assert c.host != 'ec2.compute.com'
+
+        os.environ['AIRFLOW_CONN_AIRFLOW_DB'] = \
+            'postgres://username:password@ec2.compute.com:5432/the_database'
+        c = hooks.PostgresHook.get_connection(conn_id='airflow_db')
+        assert c.host == 'ec2.compute.com'
+        assert c.schema == 'the_database'
+        assert c.login == 'username'
+        assert c.password == 'password'
+        assert c.port == 5432
+        del os.environ['AIRFLOW_CONN_AIRFLOW_DB']
+
 
 if __name__ == '__main__':
     unittest.main()

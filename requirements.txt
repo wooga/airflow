@@ -13,7 +13,7 @@ flask-login
 flower
 future
 hive-thrift-py
-ipython[all]
+ipython
 jinja2
 librabbitmq
 markdown
@@ -25,7 +25,7 @@ pyhive
 pydruid
 PySmbClient
 python-dateutil
-pyhs2
+#pyhs2
 redis
 requests
 setproctitle

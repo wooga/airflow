@@ -53,7 +53,7 @@ class DruidHook(BaseHook):
 
     def construct_ingest_query(
             self, datasource, static_path, ts_dim, columns, metric_spec,
-            intervals):
+            intervals, hadoop_dependency_coordinates=None):
         """
         Builds an ingest query for an HDFS TSV load.
 
@@ -72,7 +72,7 @@ class DruidHook(BaseHook):
                         "queryGranularity": "NONE",
                         "intervals": intervals,
                         "type": "uniform",
-                        "segmentGranularity": "DAY"
+                        "segmentGranularity": "DAY",
                     },
                     "parser": {
                         "type": "string",
@@ -93,7 +93,12 @@ class DruidHook(BaseHook):
                     "dataSource": datasource
                 },
                 "tuningConfig": {
-                    "type": "hadoop"
+                    "type": "hadoop",
+                    "jobProperties": {
+                        "mapreduce.job.user.classpath.first": "false",
+                        "mapreduce.map.output.compress" : "false",
+                        "mapreduce.output.fileoutputformat.compress" : "false",
+                    },
                 },
                 "ioConfig": {
                     "inputSpec": {
@@ -104,15 +109,18 @@ class DruidHook(BaseHook):
                 }
             }
         }
+        if hadoop_dependency_coordinates:
+            ingest_query_dict[
+                'hadoopDependencyCoordinates'] = hadoop_dependency_coordinates
 
         return json.dumps(ingest_query_dict, indent=4)
 
     def send_ingest_query(
             self, datasource, static_path, ts_dim, columns, metric_spec,
-            intervals):
+            intervals, hadoop_dependency_coordinates=None):
         query = self.construct_ingest_query(
             datasource, static_path, ts_dim, columns,
-            metric_spec, intervals)
+            metric_spec, intervals, hadoop_dependency_coordinates)
         r = requests.post(
             self.ingest_post_url, headers=self.header, data=query)
         logging.info(self.ingest_post_url)
@@ -126,7 +134,7 @@ class DruidHook(BaseHook):
 
     def load_from_hdfs(
             self, datasource, static_path,  ts_dim, columns,
-            intervals, metric_spec=None):
+            intervals, metric_spec=None, hadoop_dependency_coordinates=None):
         """
         load data to druid from hdfs
         :params ts_dim: The column name to use as a timestamp
@@ -134,7 +142,7 @@ class DruidHook(BaseHook):
         """
         task_id = self.send_ingest_query(
             datasource, static_path, ts_dim, columns, metric_spec,
-            intervals)
+            intervals, hadoop_dependency_coordinates)
         status_url = self.get_ingest_status_url(task_id)
         while True:
             r = requests.get(status_url)

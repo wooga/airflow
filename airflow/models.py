@@ -1,4 +1,6 @@
 from __future__ import print_function
+from future.standard_library import install_aliases
+install_aliases()
 from builtins import str
 from past.builtins import basestring
 from builtins import object, bytes
@@ -16,6 +18,7 @@ import re
 import signal
 import socket
 import sys
+from urllib.parse import urlparse
 
 from sqlalchemy import (
     Column, Integer, String, DateTime, Text, Boolean, ForeignKey, PickleType,
@@ -30,7 +33,7 @@ from airflow.executors import DEFAULT_EXECUTOR, LocalExecutor
 from airflow.configuration import conf
 from airflow.utils import (
     AirflowException, State, apply_defaults, provide_session,
-    is_container, as_tuple)
+    is_container, as_tuple, TriggerRule)
 
 Base = declarative_base()
 ID_LEN = 250
@@ -38,9 +41,11 @@ SQL_ALCHEMY_CONN = conf.get('core', 'SQL_ALCHEMY_CONN')
 DAGS_FOLDER = os.path.expanduser(conf.get('core', 'DAGS_FOLDER'))
 XCOM_RETURN_KEY = 'return_value'
 
+ENCRYPTION_ON = False
 try:
     from cryptography.fernet import Fernet
-    FERNET = Fernet(conf.get('core', 'FERNET_KEY'))
+    FERNET = Fernet(conf.get('core', 'FERNET_KEY').encode('utf-8'))
+    ENCRYPTION_ON = True
 except:
     pass
 
@@ -64,7 +69,7 @@ def clear_task_instances(tis, session):
         else:
             session.delete(ti)
     if job_ids:
-        from airflow.jobs import BaseJob as BJ  # HA!
+        from airflow.jobs import BaseJob as BJ
         for job in session.query(BJ).filter(BJ.id.in_(job_ids)).all():
             job.state = State.SHUTDOWN
 
@@ -309,34 +314,51 @@ class Connection(Base):
     schema = Column(String(500))
     login = Column(String(500))
     _password = Column('password', String(500))
-    is_encrypted = Column(Boolean, unique=False, default=False)
     port = Column(Integer())
+    is_encrypted = Column(Boolean, unique=False, default=False)
     extra = Column(String(5000))
 
     def __init__(
             self, conn_id=None, conn_type=None,
             host=None, login=None, password=None,
-            schema=None, port=None, extra=None):
+            schema=None, port=None, extra=None,
+            uri=None):
         self.conn_id = conn_id
         self.conn_type = conn_type
-        self.host = host
-        self.login = login
-        self.password = password
-        self.schema = schema
-        self.port = port
-        self.extra = extra
+        if uri:
+            self.parse_from_uri(uri)
+        else:
+            self.host = host
+            self.login = login
+            self.password = password
+            self.schema = schema
+            self.port = port
+            self.extra = extra
+
+    def parse_from_uri(self, uri):
+        temp_uri = urlparse(uri)
+        hostname = temp_uri.hostname or ''
+        if '%2f' in hostname:
+            hostname = hostname.replace('%2f', '/').replace('%2F', '/')
+        self.host = hostname
+        self.schema = temp_uri.path[1:]
+        self.login = temp_uri.username
+        self.password = temp_uri.password
+        self.port = temp_uri.port
 
     def get_password(self):
         if self._password and self.is_encrypted:
-            return FERNET.decrypt(bytes(self._password, 'utf-8'))
+            if not ENCRYPTION_ON:
+                raise AirflowException(
+                    "Can't decrypt, configuration is missing")
+            return FERNET.decrypt(bytes(self._password, 'utf-8')).decode()
         else:
             return self._password
 
     def set_password(self, value):
         if value:
             try:
-                val = bytes(value.encode('utf-8'))
-                self._password = FERNET.encrypt(val)
+                self._password = FERNET.encrypt(bytes(value, 'utf-8')).decode()
                 self.is_encrypted = True
             except NameError:
                 self._password = value
@@ -366,6 +388,8 @@ class Connection(Base):
                 return hooks.JdbcHook(jdbc_conn_id=self.conn_id)
             elif self.conn_type == 'mssql':
                 return hooks.MsSqlHook(mssql_conn_id=self.conn_id)
+            elif self.conn_type == 'oracle':
+                return hooks.OracleHook(oracle_conn_id=self.conn_id)
         except:
             return None
 
@@ -679,6 +703,7 @@ class TaskInstance(Base):
         :type flag_upstream_failed: boolean
         """
         TI = TaskInstance
+        TR = TriggerRule
 
         # Using the session if passed as param
         session = main_session or settings.Session()
@@ -704,7 +729,9 @@ class TaskInstance(Base):
                 return False
 
         # Checking that all upstream dependencies have succeeded
-        if task._upstream_list:
+        if not task._upstream_list or task.trigger_rule == TR.DUMMY:
+            return True
+        else:
             upstream_task_ids = [t.task_id for t in task._upstream_list]
             qry = (
                 session
@@ -713,6 +740,10 @@ class TaskInstance(Base):
                         case([(TI.state == State.SUCCESS, 1)], else_=0)), 0),
                     func.coalesce(func.sum(
                         case([(TI.state == State.SKIPPED, 1)], else_=0)), 0),
+                    func.coalesce(func.sum(
+                        case([(TI.state == State.FAILED, 1)], else_=0)), 0),
+                    func.coalesce(func.sum(
+                        case([(TI.state == State.UPSTREAM_FAILED, 1)], else_=0)), 0),
                     func.count(TI.task_id),
                 )
                 .filter(
@@ -724,27 +755,38 @@ class TaskInstance(Base):
                         State.UPSTREAM_FAILED, State.SKIPPED]),
                 )
             )
-            successes, skipped, done = qry[0]
+            successes, skipped, failed, upstream_failed, done = qry.first()
             if flag_upstream_failed:
                 if skipped:
                     self.state = State.SKIPPED
                     self.start_date = datetime.now()
                     self.end_date = datetime.now()
                     session.merge(self)
-
                 elif successes < done >= len(task._upstream_list):
                     self.state = State.UPSTREAM_FAILED
                     self.start_date = datetime.now()
                     self.end_date = datetime.now()
                     session.merge(self)
 
-            if successes < len(task._upstream_list):
-                return False
+            if task.trigger_rule == TR.ONE_SUCCESS and successes > 0:
+                return True
+            elif (task.trigger_rule == TR.ONE_FAILED and
+                  (failed + upstream_failed) > 0):
+                return True
+            elif (task.trigger_rule == TR.ALL_SUCCESS and
+                  successes == len(task._upstream_list)):
+                return True
+            elif (task.trigger_rule == TR.ALL_FAILED and
+                  failed + upstream_failed == len(task._upstream_list)):
+                return True
+            elif (task.trigger_rule == TR.ALL_DONE and
+                  done == len(task._upstream_list)):
+                return True
 
         if not main_session:
             session.commit()
             session.close()
-        return True
+        return False
 
     def __repr__(self):
         return (
@@ -776,7 +818,8 @@ class TaskInstance(Base):
             .first()
         )
         if not pool:
-            return False
+            raise ValueError('Task specified a pool ({}) but the pool '
+                             'doesn\'t exist!').format(self.task.pool)
         open_slots = pool.open_slots(session=session)
 
         return open_slots <= 0
@@ -1244,6 +1287,14 @@ class BaseOperator(object):
     :param on_success_callback: much like the ``on_failure_callback`` excepts
         that it is executed when the task succeeds.
     :type on_success_callback: callable
+    :param trigger_rule: defines the rule by which dependencies are applied
+        for the task to get triggered. Options are:
+        ``{ all_success | all_failed | all_done | one_success |
+        one_failed | dummy}``
+        default is ``all_success``. Options can be set as string or
+        using the constants defined in the static class
+        ``airflow.utils.TriggerRule``
+    :type trigger_rule: str
     """
 
     # For derived classes to define which fields will get jinjaified
@@ -1281,6 +1332,7 @@ class BaseOperator(object):
             on_failure_callback=None,
             on_success_callback=None,
             on_retry_callback=None,
+            trigger_rule=TriggerRule.ALL_SUCCESS,
             *args,
             **kwargs):
 
@@ -1293,6 +1345,7 @@ class BaseOperator(object):
         self.email_on_failure = email_on_failure
         self.start_date = start_date
         self.end_date = end_date
+        self.trigger_rule = trigger_rule
         self.depends_on_past = depends_on_past
         self.wait_for_downstream = wait_for_downstream
         if wait_for_downstream:
@@ -2231,7 +2284,7 @@ class XCom(Base):
     key = Column(String(512))
     value = Column(PickleType(pickler=dill))
     timestamp = Column(
-        DateTime, server_default=func.current_timestamp(), nullable=False)
+        DateTime, default=func.now(), nullable=False)
     execution_date = Column(DateTime, nullable=False)
 
     # source information
