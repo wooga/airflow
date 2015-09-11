@@ -330,7 +330,7 @@ def upgradedb(args):
 
 
 def version(args):
-    print(settings.HEADER + "  v" + airflow.__version__ + " by Wooga@" + airflow.__date__)
+    print(settings.HEADER + "  v" + airflow.__version__ + " by Wooga")
 
 
 def flower(args):
