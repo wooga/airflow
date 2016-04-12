@@ -1,12 +1,19 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 from builtins import object
 import imp
 import inspect
 import logging
 import os
+import re
+import sys
 from itertools import chain
 merge = chain.from_iterable
 
-from airflow.configuration import conf
+from airflow import configuration
 
 class AirflowPluginException(Exception):
     pass
@@ -27,12 +34,17 @@ class AirflowPlugin(object):
             raise AirflowPluginException("Your plugin needs a name.")
 
 
-plugins_folder = conf.get('core', 'plugins_folder')
+plugins_folder = configuration.get('core', 'plugins_folder')
 if not plugins_folder:
-    plugins_folder = conf.get('core', 'airflow_home') + '/plugins'
+    plugins_folder = configuration.get('core', 'airflow_home') + '/plugins'
 plugins_folder = os.path.expanduser(plugins_folder)
 
+if plugins_folder not in sys.path:
+    sys.path.append(plugins_folder)
+
 plugins = []
+
+norm_pattern = re.compile(r'[/|.]')
 
 # Crawl through the plugins folder to find AirflowPlugin derivatives
 for root, dirs, files in os.walk(plugins_folder, followlinks=True):
@@ -45,7 +57,11 @@ for root, dirs, files in os.walk(plugins_folder, followlinks=True):
                 os.path.split(filepath)[-1])
             if file_ext != '.py':
                 continue
-            m = imp.load_source(mod_name, filepath)
+
+            # normalize root path as namespace
+            namespace = '_'.join([re.sub(norm_pattern, '__', root), mod_name])
+
+            m = imp.load_source(namespace, filepath)
             for obj in list(m.__dict__.values()):
                 if (
                         inspect.isclass(obj) and

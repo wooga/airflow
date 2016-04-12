@@ -1,11 +1,42 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 import logging
 import os
 import sys
 
-from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy import create_engine
+from sqlalchemy.orm import scoped_session, sessionmaker
 
-from airflow.configuration import conf
+from airflow import configuration as conf
+
+
+class DummyStatsLogger(object):
+    @classmethod
+    def incr(cls, stat, count=1, rate=1):
+        pass
+    @classmethod
+    def decr(cls, stat, count=1, rate=1):
+        pass
+    @classmethod
+    def gauge(cls, stat, value, rate=1, delta=False):
+        pass
+
+Stats = DummyStatsLogger
+
+if conf.getboolean('scheduler', 'statsd_on'):
+    from statsd import StatsClient
+    statsd = StatsClient(
+        host=conf.get('scheduler', 'statsd_host'),
+        port=conf.getint('scheduler', 'statsd_port'),
+        prefix=conf.get('scheduler', 'statsd_prefix'))
+    Stats = statsd
+else:
+    Stats = DummyStatsLogger
+
+
 
 HEADER = """\
   ____________       _____________
@@ -24,15 +55,15 @@ DAGS_FOLDER = os.path.expanduser(conf.get('core', 'DAGS_FOLDER'))
 engine_args = {}
 if 'sqlite' not in SQL_ALCHEMY_CONN:
     # Engine args not supported by sqlite
-    engine_args['pool_size'] = 50
-    engine_args['pool_recycle'] = 3600
+    engine_args['pool_size'] = conf.getint('core', 'SQL_ALCHEMY_POOL_SIZE')
+    engine_args['pool_recycle'] = conf.getint('core',
+                                              'SQL_ALCHEMY_POOL_RECYCLE')
 
-engine = create_engine(
-    SQL_ALCHEMY_CONN, **engine_args)
+engine = create_engine(SQL_ALCHEMY_CONN, **engine_args)
 Session = scoped_session(
     sessionmaker(autocommit=False, autoflush=False, bind=engine))
 
-# can't move this to configuration due to ConfigParser interpolation
+# can't move this to conf due to ConfigParser interpolation
 LOG_FORMAT = (
     '[%(asctime)s] {%(filename)s:%(lineno)d} %(levelname)s - %(message)s')
 SIMPLE_LOG_FORMAT = '%(asctime)s %(levelname)s - %(message)s'
@@ -64,9 +95,15 @@ def policy(task_instance):
     """
     pass
 
+def configure_logging():
+    logging.root.handlers = []
+    logging.basicConfig(
+        format=LOG_FORMAT, stream=sys.stdout, level=LOGGING_LEVEL)
 
 try:
     from airflow_local_settings import *
     logging.info("Loaded airflow_local_settings.")
 except:
     pass
+
+configure_logging()

@@ -1,6 +1,6 @@
 g.node rect {
     stroke-width: 2;
-    stroke: #CCC;
+    stroke: white;
     cursor: pointer;
 }
 g.node text {
@@ -12,6 +12,11 @@ g.node.success rect {
 g.node.up_for_retry rect {
     stroke: gold;
 }
+
+g.node.queued rect {
+    stroke: grey;
+}
+
 g.node.running rect{
     stroke: lime;
 }
@@ -31,4 +36,18 @@ div#svg_container {
  border: 1px solid black;
  background-color: #EEE;
  cursor: move;
+}
+
+#refresh_button {
+    top: 15px;
+    right: 15px;
+    position: relative;
+}
+
+#loading {
+    margin: auto;
+    display: none;
+    position: relative;
+    width: 100px;
+    top: -550px;
 }
