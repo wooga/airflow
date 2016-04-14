@@ -23,7 +23,7 @@ jinja2
 markdown
 nose
 nose-exclude
-pandas==0.17.0
+pandas
 pygments
 pyhive
 pydruid
