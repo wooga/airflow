@@ -48,6 +48,7 @@ complicated, a line by line explanation follows below.
     t2 = BashOperator(
         task_id='sleep',
         bash_command='sleep 5',
+        retries=3,
         dag=dag)
 
     templated_command = """
@@ -68,6 +69,25 @@ complicated, a line by line explanation follows below.
     t3.set_upstream(t1)
 
 
+It's a DAG definition file
+--------------------------
+
+One thing to wrap your head around (it may not be very intuitive for everyone
+at first) is that this Airflow Python script is really
+just a configuration file specifying the DAG's structure as code.
+The actual tasks defined here will run in a different context from
+the context of this script. Different tasks run on different workers
+at different points in time, which means that this script cannot be used
+to cross communicate between tasks. Note that for this
+purpose we have a more advanced feature called ``XCom``.
+
+People sometimes think of the DAG definition file as a place where they
+can do some actual data processing - that is not the case at all!
+The script's purpose is to define a DAG object. It needs to evaluate
+quickly (seconds, not minutes) since the scheduler will execute it
+periodically to reflect the changes if any.
+
+
 Importing Modules
 -----------------
 
@@ -80,7 +100,7 @@ Airflow DAG object. Let's start by importing the libraries we will need.
     from airflow import DAG
 
     # Operators; we need this to operate!
-    from airflow.operators import BashOperator, MySqlOperator
+    from airflow.operators import BashOperator
 
 Default Arguments
 -----------------
@@ -91,7 +111,7 @@ of default parameters that we can use when creating tasks.
 
 .. code:: python
 
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
     default_args = {
         'owner': 'airflow',
@@ -145,13 +165,14 @@ instantiated from an operator is called a constructor. The first argument
     t2 = BashOperator(
         task_id='sleep',
         bash_command='sleep 5',
+        retries=3,
         dag=dag)
 
 Notice how we pass a mix of operator specific arguments (``bash_command``) and
-an argument common to all operators (``email_on_failure``) inherited
+an argument common to all operators (``retries``) inherited
 from BaseOperator to the operator's constructor. This is simpler than
 passing every argument for every constructor call. Also, notice that in
-the second task we override the ``email_on_failure`` parameter with ``False``.
+the second task we override the ``retries`` parameter with ``3``.
 
 The precedence rules for a task are as follows:
 
@@ -210,6 +231,9 @@ different languages, and general flexibility in structuring pipelines. It is
 also possible to define your ``template_searchpath`` as pointing to any folder
 locations in the DAG constructor call.
 
+For more information on the variables and macros that can be referenced
+in templates, make sure to read through the :ref:`macros` section
+
 Setting up Dependencies
 -----------------------
 We have two simple tasks that do not depend on each other. Here's a few ways
@@ -227,8 +251,8 @@ you can define dependencies between them:
     t3.set_upstream(t1)
 
     # all of this is equivalent to
-    # dag.set_dependencies('print_date', 'sleep')
-    # dag.set_dependencies('print_date', 'templated')
+    # dag.set_dependency('print_date', 'sleep')
+    # dag.set_dependency('print_date', 'templated')
 
 Note that when executing your script, Airflow will raise exceptions when
 it finds cycles in your DAG or when a dependency is referenced more
@@ -277,6 +301,7 @@ something like this:
     t2 = BashOperator(
         task_id='sleep',
         bash_command='sleep 5',
+        retries=3,
         dag=dag)
 
     templated_command = """
@@ -395,11 +420,11 @@ running against it should get it to get triggered and run every day.
 
 Here's a few things you might want to do next:
 
-* Take an in-depth tour of the UI, click all the things!
+* Take an in-depth tour of the UI - click all the things!
 * Keep reading the docs! Especially the sections on:
 
     * Command line interface
     * Operators
     * Macros
 
-* Write you first pipeline!
+* Write your first pipeline!

@@ -28,6 +28,9 @@ class HiveToDruidTransfer(BaseOperator):
     :param hadoop_dependency_coordinates: list of coordinates to squeeze
         int the ingest json
     :type hadoop_dependency_coordinates: list of str
+    :param intervals: list of time intervals that defines segments, this
+        is passed as is to the json object
+    :type intervals: list
     """
 
     template_fields = ('sql', 'intervals')
@@ -41,17 +44,19 @@ class HiveToDruidTransfer(BaseOperator):
             druid_datasource,
             ts_dim,
             metric_spec=None,
-            hive_cli_conn_id='hiveserver2_default',
+            hive_cli_conn_id='hive_cli_default',
             druid_ingest_conn_id='druid_ingest_default',
             metastore_conn_id='metastore_default',
             hadoop_dependency_coordinates=None,
             intervals=None,
+            num_shards=1,
             *args, **kwargs):
         super(HiveToDruidTransfer, self).__init__(*args, **kwargs)
         self.sql = sql
         self.druid_datasource = druid_datasource
         self.ts_dim = ts_dim
         self.intervals = intervals or ['{{ ds }}/{{ tomorrow_ds }}']
+        self.num_shards = num_shards
         self.metric_spec = metric_spec or [{
             "name": "count",
             "type": "count"}]
@@ -60,12 +65,10 @@ class HiveToDruidTransfer(BaseOperator):
         self.druid_ingest_conn_id = druid_ingest_conn_id
         self.metastore_conn_id = metastore_conn_id
 
-
-
     def execute(self, context):
         hive = HiveCliHook(hive_cli_conn_id=self.hive_cli_conn_id)
         logging.info("Extracting data from Hive")
-        hive_table = 'druid.' + context['task_instance_key_str']
+        hive_table = 'druid.' + context['task_instance_key_str'].replace('.', '_')
         sql = self.sql.strip().strip(';')
         hql = """\
         set mapred.output.compress=false;
@@ -78,13 +81,8 @@ class HiveToDruidTransfer(BaseOperator):
         AS
         {sql}
         """.format(**locals())
+        logging.info("Running command:\n {}".format(hql))
         hive.run_cli(hql)
-        #hqls = hql.split(';')
-        #logging.info(str(hqls))
-        #from airflow.hooks import HiveServer2Hook
-        #hive = HiveServer2Hook(hiveserver2_conn_id="hiveserver2_silver")
-        #hive.get_results(hqls)
-
 
         m = HiveMetastoreHook(self.metastore_conn_id)
         t = m.get_table(hive_table)
@@ -105,7 +103,7 @@ class HiveToDruidTransfer(BaseOperator):
             datasource=self.druid_datasource,
             intervals=self.intervals,
             static_path=static_path, ts_dim=self.ts_dim,
-            columns=columns, metric_spec=self.metric_spec,
+            columns=columns, num_shards=self.num_shards, metric_spec=self.metric_spec,
             hadoop_dependency_coordinates=self.hadoop_dependency_coordinates)
         logging.info("Load seems to have succeeded!")
 
@@ -113,4 +111,4 @@ class HiveToDruidTransfer(BaseOperator):
             "Cleaning up by dropping the temp "
             "Hive table {}".format(hive_table))
         hql = "DROP TABLE IF EXISTS {}".format(hive_table)
-        #hive.run_cli(hql)
+        hive.run_cli(hql)

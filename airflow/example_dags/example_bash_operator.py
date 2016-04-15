@@ -10,7 +10,10 @@ args = {
     'start_date': seven_days_ago,
 }
 
-dag = DAG(dag_id='example_bash_operator', default_args=args)
+dag = DAG(
+    dag_id='example_bash_operator', default_args=args,
+    schedule_interval='0 0 * * *',
+    dagrun_timeout=timedelta(minutes=60))
 
 cmd = 'ls -l'
 run_this_last = DummyOperator(task_id='run_this_last', dag=dag)
@@ -29,6 +32,6 @@ for i in range(3):
 
 task = BashOperator(
     task_id='also_run_this',
-    bash_command='echo "{{ macros.uuid.uuid1() }}"',
+    bash_command='echo "run_id={{ run_id }} | dag_run={{ dag_run }}"',
     dag=dag)
 task.set_downstream(run_this_last)
