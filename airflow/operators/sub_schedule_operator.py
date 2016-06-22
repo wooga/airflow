@@ -2,7 +2,8 @@ from datetime import datetime
 import logging
 
 from airflow.models import BaseOperator, TaskInstance
-from airflow.utils import apply_defaults, State
+from airflow.utils import apply_defaults
+from airflow.utils.state import State
 from airflow import settings
 
 __author__ = 'cedrikneumann'
