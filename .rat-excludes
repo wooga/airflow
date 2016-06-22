@@ -14,3 +14,8 @@ dist
 build
 airflow.egg-info
 .idea
+metastore_db
+.*sql
+.*csv
+CHANGELOG.txt
+.*zip

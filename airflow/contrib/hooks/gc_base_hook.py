@@ -2,7 +2,7 @@ import httplib2
 import logging
 
 from airflow.hooks.base_hook import BaseHook
-from airflow.utils import AirflowException
+from airflow.exceptions import AirflowException
 from oauth2client.client import SignedJwtAssertionCredentials, GoogleCredentials
 
 class GoogleCloudBaseHook(BaseHook):
@@ -33,7 +33,7 @@ class GoogleCloudBaseHook(BaseHook):
 
     def _authorize(self):
         """
-        Returns an authorized HTTP object to be used to build a Google cloud 
+        Returns an authorized HTTP object to be used to build a Google cloud
         service hook connection.
         """
         connection_info = self.get_connection(self.conn_id)
@@ -49,7 +49,7 @@ class GoogleCloudBaseHook(BaseHook):
             logging.info('Getting connection using `gcloud auth` user, since no service_account/key_path are defined for hook.')
             credentials = GoogleCredentials.get_application_default()
         elif self.scope:
-            with file(key_path, 'rb') as key_file:
+            with open(key_path, 'rb') as key_file:
                 key = key_file.read()
                 credentials = SignedJwtAssertionCredentials(
                     service_account,
@@ -64,7 +64,7 @@ class GoogleCloudBaseHook(BaseHook):
 
     def _extras_dejson(self):
         """
-        A little helper method that returns the JSON-deserialized extras in a 
+        A little helper method that returns the JSON-deserialized extras in a
         single call.
         """
         return self.get_connection(self.conn_id).extra_dejson

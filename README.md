@@ -1,10 +1,13 @@
 # Airflow
 
-[![Join the chat at https://gitter.im/airbnb/airflow](https://badges.gitter.im/airbnb/airflow.svg)](https://gitter.im/airbnb/airflow?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+[![PyPI version](https://badge.fury.io/py/airflow.svg)](https://badge.fury.io/py/airflow)
 [![Build Status](https://travis-ci.org/airbnb/airflow.svg)](https://travis-ci.org/airbnb/airflow)
 [![Coverage Status](https://coveralls.io/repos/airbnb/airflow/badge.svg?service=github)](https://coveralls.io/github/airbnb/airflow)
 [![Code Health](https://landscape.io/github/airbnb/airflow/master/landscape.svg?style=flat)](https://landscape.io/github/airbnb/airflow/master)
+[![Requirements Status](https://requires.io/github/airbnb/airflow/requirements.svg?branch=master)](https://requires.io/github/airbnb/airflow/requirements/?branch=master)
 [![pypi downloads](https://img.shields.io/pypi/dm/airflow.svg)](https://pypi.python.org/pypi/airflow/)
+[![Documentation](https://img.shields.io/badge/docs-pythonhosted-blue.svg)](http://pythonhosted.org/airflow/)
+[![Join the chat at https://gitter.im/airbnb/airflow](https://badges.gitter.im/airbnb/airflow.svg)](https://gitter.im/airbnb/airflow?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 Airflow is a platform to programmatically author, schedule and monitor
 workflows.
@@ -12,14 +15,17 @@ workflows.
 When workflows are defined as code, they become more maintainable,
 versionable, testable, and collaborative.
 
-![img] (http://i.imgur.com/6Gs4hxT.gif)
-
-Use airflow to author workflows as directed acyclic graphs (DAGs) of tasks.
-The airflow scheduler executes your tasks on an array of workers while
+Use Airflow to author workflows as directed acyclic graphs (DAGs) of tasks.
+The Airflow scheduler executes your tasks on an array of workers while
 following the specified dependencies. Rich command line utilities make
 performing complex surgeries on DAGs a snap. The rich user interface
 makes it easy to visualize pipelines running in production,
 monitor progress, and troubleshoot issues when needed.
+
+## Getting started
+Please visit the Airflow Platform documentation for help with [installing Airflow](http://pythonhosted.org/airflow/installation.html), getting a [quick start](http://pythonhosted.org/airflow/start.html), or a more complete [tutorial](http://pythonhosted.org/airflow/tutorial.html).
+
+For further information, please visit the [Airflow Wiki](https://github.com/airbnb/airflow/wiki).
 
 ## Beyond the Horizon
 
@@ -43,6 +49,26 @@ unit of work and continuity.
 - **Elegant**:  Airflow pipelines are lean and explicit. Parameterizing your scripts is built into the core of Airflow using the powerful **Jinja** templating engine.
 - **Scalable**:  Airflow has a modular architecture and uses a message queue to orchestrate an arbitrary number of workers. Airflow is ready to scale to infinity.
 
+## User Interface
+
+- **DAGs**: Overview of all DAGs in your environment.
+![](/docs/img/dags.png)
+
+- **Tree View**: Tree representation of a DAG that spans across time.
+![](/docs/img/tree.png)
+
+- **Graph View**: Visualization of a DAG's dependencies and their current status for a specific run.
+![](/docs/img/graph.png)
+
+- **Task Duration**: Total time spent on different tasks over time.
+![](/docs/img/duration.png)
+
+- **Gantt View**: Duration and overlap of a DAG.
+![](/docs/img/gantt.png)
+
+- **Code View**:  Quick way to view source code of a DAG.
+![](/docs/img/code.png)
+
 ## Who uses Airflow?
 
 As the Airflow community grows, we'd like to keep track of who is using
@@ -51,10 +77,7 @@ if you may.
 
 Committers:
 
-* [@mistercrunch](https://github.com/mistercrunch) ([Airbnb](http://airbnb.io/))
-* [@r39132](https://github.com/r39132) ([Agari](https://github.com/agaridata))
-* [@criccomini](https://github.com/criccomini) ([WePay](http://www.wepay.com))
-* [@bolkedebruin](https://github.com/bolkedebruin) ([ING](http://www.ing.com/))
+* Refer to [Committers](https://github.com/airbnb/airflow/wiki/Committers)
 
 Currently **officially** using Airflow:
 
@@ -68,6 +91,8 @@ Currently **officially** using Airflow:
 * [Cotap](https://github.com/cotap/) [[@maraca](https://github.com/maraca) & [@richardchew](https://github.com/richardchew)]
 * Easy Taxi [[@caique-lima](https://github.com/caique-lima)]
 * [FreshBooks](https://github.com/freshbooks) [[@DinoCow](https://github.com/DinoCow)]
+* [Gentner Lab](http://github.com/gentnerlab) [[@neuromusic](https://github.com/neuromusic)]
+* [Glassdoor](https://github.com/Glassdoor) [[@syvineckruyk](https://github.com/syvineckruyk)]
 * [Handy](http://www.handy.com/careers/73115?gh_jid=73115&gh_src=o5qcxn) [[@marcintustin](https://github.com/marcintustin) / [@mtustin-handy](https://github.com/mtustin-handy)]
 * [Holimetrix](http://holimetrix.com/) [[@thibault-ketterer](https://github.com/thibault-ketterer)]
 * [Hootsuite](https://github.com/hootsuite)
@@ -76,7 +101,8 @@ Currently **officially** using Airflow:
 * [Kogan.com](https://github.com/kogan) [[@geeknam](https://github.com/geeknam)]
 * [LendUp](https://www.lendup.com/) [[@lendup](https://github.com/lendup)]
 * [LingoChamp](http://www.liulishuo.com/) [[@haitaoyao](https://github.com/haitaoyao)]
-* Lyft
+* [Lucid](http://luc.id) [[@jbrownlucid](https://github.com/jbrownlucid) & [@kkourtchikov](https://github.com/kkourtchikov)]
+* [Lyft](https://www.lyft.com/)[[@SaurabhBajaj](https://github.com/SaurabhBajaj)]
 * [Sense360](https://github.com/Sense360) [[@kamilmroczek](https://github.com/KamilMroczek)]
 * [Sidecar](https://hello.getsidecar.com/) [[@getsidecar](https://github.com/getsidecar)]
 * [SimilarWeb](https://www.similarweb.com/) [[@similarweb](https://github.com/similarweb)]
@@ -91,10 +117,10 @@ Currently **officially** using Airflow:
 
 ## Links
 
-* [Full documentation on pythonhosted.com](http://pythonhosted.org/airflow/)
+* [Full documentation on pythonhosted.org](http://pythonhosted.org/airflow/)
 * [Airflow Google Group (mailing list / forum)](https://groups.google.com/forum/#!forum/airbnb_airflow)
 * [Airbnb Blog Post about Airflow](http://nerds.airbnb.com/airflow/)
-* [Airflow Common Pitfalls](https://github.com/airbnb/airflow/wiki/Airflow-Common-Pitfalls)
+* [Airflow Common Pitfalls](https://github.com/airbnb/airflow/wiki/Common-Pitfalls)
 * [Hadoop Summit Airflow Video](https://www.youtube.com/watch?v=oYp49mBwH60)
 * [Airflow at Agari Blog Post](http://agari.com/blog/airflow-agari)
 * [Best practices with Airflow (Max) nov 2015](https://youtu.be/dgaoqOZlvEA)
