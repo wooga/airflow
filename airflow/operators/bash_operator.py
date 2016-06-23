@@ -65,7 +65,7 @@ class BashOperator(BaseOperator):
                 logging.info("Running command: " + bash_command)
                 sp = Popen(
                     ['bash', fname],
-                    stdout=PIPE, stderr=STDOUT,
+                    stdout=PIPE, stderr=STDOUT, stdin=PIPE,
                     cwd=tmp_dir, env=self.env)
 
                 self.sp = sp
