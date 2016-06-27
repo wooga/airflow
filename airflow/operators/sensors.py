@@ -167,6 +167,7 @@ class ExternalTaskSensor(BaseSensorOperator):
         For yesterday, use [positive!] datetime.timedelta(days=1)
     :type execution_delta: datetime.timedelta
     """
+    template_fields = ['external_dag_id', 'external_task_id']
 
     @apply_defaults
     def __init__(
