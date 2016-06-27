@@ -201,6 +201,7 @@ class ExternalTaskSensor(BaseSensorOperator):
     :type execution_date_fn: callable
     """
     ui_color = '#19647e'
+    template_fields = ['external_dag_id', 'external_task_id']
 
     @apply_defaults
     def __init__(
