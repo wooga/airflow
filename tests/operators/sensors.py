@@ -360,3 +360,21 @@ exit 0
                 start_date=DEFAULT_DATE,
                 end_date=DEFAULT_DATE,
                 ignore_ti_state=True)
+
+    def test_external_task_sensor_templating(self):
+        dag = DAG(
+            TEST_DAG_ID,
+            default_args=self.args,
+        )
+        task = ExternalTaskSensor(
+            task_id='external_task_sensor',
+            external_dag_id='{{ params.external_dag }}',
+            external_task_id='{{ params.external_task }}',
+            params={'external_dag': 'external_dag_id', 'external_task': 'external_task_id'},
+            dag=dag,
+        )
+        ti = TaskInstance(task, datetime.today())
+        ti.render_templates()
+        context = ti.get_template_context()
+        self.assertEqual(ti.task.external_dag_id, 'external_dag_id')
+        self.assertEqual(ti.task.external_task_id, 'external_task_id')
