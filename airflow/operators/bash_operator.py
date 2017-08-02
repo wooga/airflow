@@ -79,9 +79,10 @@ class BashOperator(BaseOperator):
                 logging.info("Temporary script "
                              "location :{0}".format(script_location))
                 logging.info("Running command: " + bash_command)
+                FNULL = open(os.devnull, 'r')
                 sp = Popen(
                     ['bash', fname],
-                    stdout=PIPE, stderr=STDOUT, stdin=PIPE,
+                    stdout=PIPE, stderr=STDOUT, stdin=FNULL,
                     cwd=tmp_dir, env=self.env,
                     preexec_fn=os.setsid)
 
