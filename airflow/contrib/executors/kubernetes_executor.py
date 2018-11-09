@@ -143,11 +143,6 @@ class KubeConfig:
             self.kubernetes_section, 'worker_service_account_name')
         self.image_pull_secrets = conf.get(self.kubernetes_section, 'image_pull_secrets')
 
-<<<<<<< HEAD
-        # NOTE: user can build the dags into the docker image directly,
-        # this will set to True if so
-=======
->>>>>>> fix(kubernetes): add flag to enable embedded dags
         self.dags_in_image = conf.getboolean(self.kubernetes_section, 'dags_in_image')
 
         # NOTE: `git_repo` and `git_branch` must be specified together as a pair
@@ -508,7 +503,6 @@ class AirflowKubernetesScheduler(LoggingMixin):
             self.log.warn("could not get try_number as an int: %s", labels.get('try_number', '1'))
 
         try:
-            try_num = int(labels.get('try_number', '1'))
             return (
                 labels['dag_id'], labels['task_id'],
                 self._label_safe_datestring_to_datetime(labels['execution_date']),
