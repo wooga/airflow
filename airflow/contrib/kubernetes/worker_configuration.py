@@ -22,6 +22,7 @@ import six
 from airflow.contrib.kubernetes.pod import Pod, Resources
 from airflow.contrib.kubernetes.secret import Secret
 from airflow.utils.log.logging_mixin import LoggingMixin
+from airflow.configuration import conf
 
 
 class WorkerConfiguration(LoggingMixin):
@@ -37,7 +38,7 @@ class WorkerConfiguration(LoggingMixin):
     def _get_init_containers(self, volume_mounts):
         """When using git to retrieve the DAGs, use the GitSync Init Container"""
         # If we're using volume claims to mount the dags, no init container is needed
-        if self.kube_config.dags_volume_claim:
+        if self.kube_config.dags_volume_claim or self.kube_config.dags_in_image:
             return []
 
         # Otherwise, define a git-sync init container
@@ -80,11 +81,16 @@ class WorkerConfiguration(LoggingMixin):
     def _get_environment(self):
         """Defines any necessary environment variables for the pod executor"""
         env = {
-            'AIRFLOW__CORE__DAGS_FOLDER': '/tmp/dags',
-            'AIRFLOW__CORE__EXECUTOR': 'LocalExecutor'
+            "AIRFLOW__CORE__EXECUTOR": "LocalExecutor",
         }
+
         if self.kube_config.airflow_configmap:
             env['AIRFLOW__CORE__AIRFLOW_HOME'] = self.worker_airflow_home
+        if self.kube_config.worker_dags_folder:
+            env['AIRFLOW__CORE__DAGS_FOLDER'] = self.kube_config.worker_dags_folder
+        if (not self.kube_config.airflow_configmap and
+                'AIRFLOW__CORE__SQL_ALCHEMY_CONN' not in self.kube_config.kube_secrets):
+            env['AIRFLOW__CORE__SQL_ALCHEMY_CONN'] = conf.get("core", "SQL_ALCHEMY_CONN")
         return env
 
     def _get_secrets(self):
@@ -106,7 +112,7 @@ class WorkerConfiguration(LoggingMixin):
         dags_volume_name = 'airflow-dags'
         logs_volume_name = 'airflow-logs'
 
-        def _construct_volume(name, claim, subpath=None):
+        def _construct_volume(name, claim):
             vo = {
                 'name': name
             }
@@ -114,42 +120,53 @@ class WorkerConfiguration(LoggingMixin):
                 vo['persistentVolumeClaim'] = {
                     'claimName': claim
                 }
-                if subpath:
-                    vo['subPath'] = subpath
             else:
                 vo['emptyDir'] = {}
             return vo
 
         volumes = [
             _construct_volume(
-                dags_volume_name,
-                self.kube_config.dags_volume_claim,
-                self.kube_config.dags_volume_subpath
-            ),
-            _construct_volume(
                 logs_volume_name,
-                self.kube_config.logs_volume_claim,
-                self.kube_config.logs_volume_subpath
+                self.kube_config.logs_volume_claim
             )
         ]
 
-        dag_volume_mount_path = ""
-        if self.kube_config.dags_volume_claim:
-            dag_volume_mount_path = self.worker_airflow_dags
-        else:
-            dag_volume_mount_path = os.path.join(
-                self.worker_airflow_dags,
-                self.kube_config.git_subpath
+        if not self.kube_config.dags_in_image:
+            volumes.append(
+                _construct_volume(
+                    dags_volume_name,
+                    self.kube_config.dags_volume_claim
+                )
             )
 
-        volume_mounts = [{
-            'name': dags_volume_name,
-            'mountPath': dag_volume_mount_path,
-            'readOnly': True
-        }, {
+        logs_volume_mount = {
             'name': logs_volume_name,
-            'mountPath': self.worker_airflow_logs
-        }]
+            'mountPath': self.worker_airflow_logs,
+        }
+        if self.kube_config.logs_volume_subpath:
+            logs_volume_mount['subPath'] = self.kube_config.logs_volume_subpath
+
+        volume_mounts = [
+            logs_volume_mount
+        ]
+
+        if not self.kube_config.dags_in_image:
+            dag_volume_mount_path = ""
+            if self.kube_config.dags_volume_claim:
+                dag_volume_mount_path = self.worker_airflow_dags
+            else:
+                dag_volume_mount_path = os.path.join(
+                    self.worker_airflow_dags,
+                    self.kube_config.git_subpath
+                )
+            dags_volume_mount = {
+                'name': dags_volume_name,
+                'mountPath': dag_volume_mount_path,
+                'readOnly': True,
+            }
+            if self.kube_config.dags_volume_subpath:
+                dags_volume_mount['subPath'] = self.kube_config.dags_volume_subpath
+            volume_mounts.append(dags_volume_mount)
 
         # Mount the airflow.cfg file via a configmap the user has specified
         if self.kube_config.airflow_configmap:
