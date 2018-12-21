@@ -24,6 +24,7 @@ from airflow.configuration import conf
 from airflow.contrib.kubernetes.pod import Pod, Resources
 from airflow.contrib.kubernetes.secret import Secret
 from airflow.utils.log.logging_mixin import LoggingMixin
+from airflow.configuration import conf
 
 
 class WorkerConfiguration(LoggingMixin):
@@ -43,8 +44,12 @@ class WorkerConfiguration(LoggingMixin):
     def _get_init_containers(self, volume_mounts):
         """When using git to retrieve the DAGs, use the GitSync Init Container"""
         # If we're using volume claims to mount the dags, no init container is needed
+<<<<<<< HEAD
         if self.kube_config.dags_volume_claim or \
            self.kube_config.dags_volume_host or self.kube_config.dags_in_image:
+=======
+        if self.kube_config.dags_volume_claim or self.kube_config.dags_in_image:
+>>>>>>> fix(kubernetes): add flag to enable embedded dags
             return []
 
         # Otherwise, define a git-sync init container
@@ -101,6 +106,7 @@ class WorkerConfiguration(LoggingMixin):
 
         if self.kube_config.airflow_configmap:
             env['AIRFLOW__CORE__AIRFLOW_HOME'] = self.worker_airflow_home
+<<<<<<< HEAD
             env['AIRFLOW__CORE__DAGS_FOLDER'] = self.worker_airflow_dags
         if (not self.kube_config.airflow_configmap and
                 'AIRFLOW__CORE__SQL_ALCHEMY_CONN' not in self.kube_config.kube_secrets):
@@ -113,6 +119,13 @@ class WorkerConfiguration(LoggingMixin):
                 self.kube_config.git_subpath     # dags
             )
             env['AIRFLOW__CORE__DAGS_FOLDER'] = dag_volume_mount_path
+=======
+        if self.kube_config.worker_dags_folder:
+            env['AIRFLOW__CORE__DAGS_FOLDER'] = self.kube_config.worker_dags_folder
+        if (not self.kube_config.airflow_configmap and
+                'AIRFLOW__CORE__SQL_ALCHEMY_CONN' not in self.kube_config.kube_secrets):
+            env['AIRFLOW__CORE__SQL_ALCHEMY_CONN'] = conf.get("core", "SQL_ALCHEMY_CONN")
+>>>>>>> fix(kubernetes): add flag to enable embedded dags
         return env
 
     def _get_secrets(self):
@@ -131,23 +144,35 @@ class WorkerConfiguration(LoggingMixin):
         return self.kube_config.image_pull_secrets.split(',')
 
     def init_volumes_and_mounts(self):
+<<<<<<< HEAD
         def _construct_volume(name, claim, host):
             volume = {
+=======
+        dags_volume_name = 'airflow-dags'
+        logs_volume_name = 'airflow-logs'
+
+        def _construct_volume(name, claim):
+            vo = {
+>>>>>>> fix(kubernetes): add flag to enable embedded dags
                 'name': name
             }
             if claim:
                 volume['persistentVolumeClaim'] = {
                     'claimName': claim
                 }
+<<<<<<< HEAD
             elif host:
                 volume['hostPath'] = {
                     'path': host,
                     'type': ''
                 }
+=======
+>>>>>>> fix(kubernetes): add flag to enable embedded dags
             else:
                 volume['emptyDir'] = {}
             return volume
 
+<<<<<<< HEAD
         volumes = {
             self.dags_volume_name: _construct_volume(
                 self.dags_volume_name,
@@ -158,9 +183,16 @@ class WorkerConfiguration(LoggingMixin):
                 self.logs_volume_name,
                 self.kube_config.logs_volume_claim,
                 self.kube_config.logs_volume_host
+=======
+        volumes = [
+            _construct_volume(
+                logs_volume_name,
+                self.kube_config.logs_volume_claim
+>>>>>>> fix(kubernetes): add flag to enable embedded dags
             )
         }
 
+<<<<<<< HEAD
         volume_mounts = {
             self.dags_volume_name: {
                 'name': self.dags_volume_name,
@@ -182,6 +214,44 @@ class WorkerConfiguration(LoggingMixin):
         if self.kube_config.dags_in_image:
             del volumes[self.dags_volume_name]
             del volume_mounts[self.dags_volume_name]
+=======
+        if not self.kube_config.dags_in_image:
+            volumes.append(
+                _construct_volume(
+                    dags_volume_name,
+                    self.kube_config.dags_volume_claim
+                )
+            )
+
+        logs_volume_mount = {
+            'name': logs_volume_name,
+            'mountPath': self.worker_airflow_logs,
+        }
+        if self.kube_config.logs_volume_subpath:
+            logs_volume_mount['subPath'] = self.kube_config.logs_volume_subpath
+
+        volume_mounts = [
+            logs_volume_mount
+        ]
+
+        if not self.kube_config.dags_in_image:
+            dag_volume_mount_path = ""
+            if self.kube_config.dags_volume_claim:
+                dag_volume_mount_path = self.worker_airflow_dags
+            else:
+                dag_volume_mount_path = os.path.join(
+                    self.worker_airflow_dags,
+                    self.kube_config.git_subpath
+                )
+            dags_volume_mount = {
+                'name': dags_volume_name,
+                'mountPath': dag_volume_mount_path,
+                'readOnly': True,
+            }
+            if self.kube_config.dags_volume_subpath:
+                dags_volume_mount['subPath'] = self.kube_config.dags_volume_subpath
+            volume_mounts.append(dags_volume_mount)
+>>>>>>> fix(kubernetes): add flag to enable embedded dags
 
         # Mount the airflow.cfg file via a configmap the user has specified
         if self.kube_config.airflow_configmap:
