@@ -650,6 +650,7 @@ class Connection(Base, LoggingMixin):
     _extra = Column('extra', String(5000))
 
     _types = [
+        ('exasol', 'Exasol'),
         ('docker', 'Docker Registry',),
         ('fs', 'File (path)'),
         ('ftp', 'FTP',),
@@ -822,6 +823,9 @@ class Connection(Base, LoggingMixin):
             elif self.conn_type == 'cassandra':
                 from airflow.contrib.hooks.cassandra_hook import CassandraHook
                 return CassandraHook(cassandra_conn_id=self.conn_id)
+            elif self.conn_type == 'exasol':
+                from airflow.hooks.exasol_hook import ExasolHook
+                return ExasolHook(exasol_conn_id=self.conn_id)
         except Exception:
             pass
 

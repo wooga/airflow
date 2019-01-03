@@ -392,6 +392,7 @@ interface when possible and acting as building blocks for operators.
 .. autoclass:: airflow.hooks.sqlite_hook.SqliteHook
 .. autoclass:: airflow.hooks.webhdfs_hook.WebHDFSHook
 .. autoclass:: airflow.hooks.zendesk_hook.ZendeskHook
+.. autoclass:: airflow.hooks.exasol_hook.ExasolHook
 
 Community contributed hooks
 '''''''''''''''''''''''''''
