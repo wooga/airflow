@@ -187,6 +187,7 @@ elasticsearch = [
     'elasticsearch-dsl>=5.0.0,<6.0.0'
 ]
 emr = ['boto3>=1.0.0, <1.8.0']
+exasol = ['pyexasol>=0.5.1,<1.0.0']
 gcp_api = [
     'httplib2>=0.9.2',
     'google-api-python-client>=1.6.0, <2.0.0dev',
@@ -245,7 +246,7 @@ winrm = ['pywinrm==0.2.2']
 zendesk = ['zdesk']
 
 all_dbs = postgres + mysql + hive + mssql + hdfs + vertica + cloudant + druid + pinot \
-    + cassandra + mongo
+    + cassandra + mongo + exasol
 
 devel = [
     'click==6.7',
@@ -367,6 +368,7 @@ def do_setup():
             'druid': druid,
             'elasticsearch': elasticsearch,
             'emr': emr,
+            'exasol': exasol,
             'gcp_api': gcp_api,
             'github_enterprise': github_enterprise,
             'google_auth': google_auth,

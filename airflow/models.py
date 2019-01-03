@@ -622,6 +622,7 @@ class Connection(Base, LoggingMixin):
     _extra = Column('extra', String(5000))
 
     _types = [
+        ('exasol', 'Exasol'),
         ('docker', 'Docker Registry',),
         ('fs', 'File (path)'),
         ('ftp', 'FTP',),
@@ -808,6 +809,9 @@ class Connection(Base, LoggingMixin):
             elif self.conn_type == 'gcpcloudsql':
                 from airflow.contrib.hooks.gcp_sql_hook import CloudSqlDatabaseHook
                 return CloudSqlDatabaseHook(gcp_cloudsql_conn_id=self.conn_id)
+            elif self.conn_type == 'exasol':
+                from airflow.hooks.exasol_hook import ExasolHook
+                return ExasolHook(exasol_conn_id=self.conn_id)
         except Exception:
             pass
 

@@ -64,6 +64,7 @@ _hooks = {
     'mssql_hook': ['MsSqlHook'],
     'oracle_hook': ['OracleHook'],
     'slack_hook': ['SlackHook'],
+    'exasol_hook': ['ExasolHook'],
 }
 
 
