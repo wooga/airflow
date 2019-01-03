@@ -61,6 +61,7 @@ _hooks = {
     'aws_dynamodb_hook': ['AwsDynamoDBHook'],
     'azure_data_lake_hook': ['AzureDataLakeHook'],
     'azure_fileshare_hook': ['AzureFileShareHook'],
+    'exasol_hook': ['ExasolHook'],
 }
 
 
