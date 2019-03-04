@@ -128,8 +128,6 @@ class KubeConfig:
             self.kubernetes_section, 'worker_container_repository')
         self.worker_container_tag = configuration.get(
             self.kubernetes_section, 'worker_container_tag')
-        self.worker_dags_folder = configuration.get(
-            self.kubernetes_section, 'worker_dags_folder')
         self.kube_image = '{}:{}'.format(
             self.worker_container_repository, self.worker_container_tag)
         self.kube_image_pull_policy = configuration.get(
@@ -143,6 +141,8 @@ class KubeConfig:
             self.kubernetes_section, 'worker_service_account_name')
         self.image_pull_secrets = conf.get(self.kubernetes_section, 'image_pull_secrets')
 
+        # NOTE: user can build the dags into the docker image directly,
+        # this will set to True if so
         self.dags_in_image = conf.getboolean(self.kubernetes_section, 'dags_in_image')
 
         # NOTE: `git_repo` and `git_branch` must be specified together as a pair

@@ -24,7 +24,6 @@ from airflow.configuration import conf
 from airflow.contrib.kubernetes.pod import Pod, Resources
 from airflow.contrib.kubernetes.secret import Secret
 from airflow.utils.log.logging_mixin import LoggingMixin
-from airflow.configuration import conf
 
 
 class WorkerConfiguration(LoggingMixin):
@@ -145,10 +144,16 @@ class WorkerConfiguration(LoggingMixin):
                     'path': host,
                     'type': ''
                 }
+            else:
+                volume['emptyDir'] = {}
             return volume
 
         volumes = {
+            self.dags_volume_name: _construct_volume(
+                self.dags_volume_name,
                 self.kube_config.dags_volume_claim,
+                self.kube_config.dags_volume_host
+            ),
             self.logs_volume_name: _construct_volume(
                 self.logs_volume_name,
                 self.kube_config.logs_volume_claim,
@@ -156,13 +161,13 @@ class WorkerConfiguration(LoggingMixin):
             )
         }
 
-<<<<<<< HEAD
         volume_mounts = {
             self.dags_volume_name: {
                 'name': self.dags_volume_name,
                 'mountPath': self.generate_dag_volume_mount_path(),
                 'readOnly': True,
             },
+            self.logs_volume_name: {
                 'name': self.logs_volume_name,
                 'mountPath': self.worker_airflow_logs,
             }
@@ -177,13 +182,13 @@ class WorkerConfiguration(LoggingMixin):
         if self.kube_config.dags_in_image:
             del volumes[self.dags_volume_name]
             del volume_mounts[self.dags_volume_name]
-=======
-        if not self.kube_config.dags_in_image:
-            volumes.append(
-                _construct_volume(
-                    dags_volume_name,
-                    self.kube_config.dags_volume_claim
-                )
+
+        # Mount the airflow.cfg file via a configmap the user has specified
+        if self.kube_config.airflow_configmap:
+            config_volume_name = 'airflow-config'
+            config_path = '{}/airflow.cfg'.format(self.worker_airflow_home)
+            volumes[config_volume_name] = {
+                'name': config_volume_name,
                 'configMap': {
                     'name': self.kube_config.airflow_configmap
                 }
