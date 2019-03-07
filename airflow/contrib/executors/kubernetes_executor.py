@@ -294,8 +294,12 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin, object):
             )
             if event['type'] == 'ERROR':
                 return self.process_error(event)
+
+            status = task.status.phase
+            if event['type'] == 'DELETED' and status == 'Pending':
+                status = 'Canceled'
             self.process_status(
-                task.metadata.name, task.status.phase, task.metadata.labels,
+                task.metadata.name, status, task.metadata.labels,
                 task.metadata.resource_version
             )
             last_resource_version = task.metadata.resource_version
@@ -325,6 +329,9 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin, object):
             self.log.info('Event: %s Pending', pod_id)
         elif status == 'Failed':
             self.log.info('Event: %s Failed', pod_id)
+            self.watcher_queue.put((pod_id, State.FAILED, labels, resource_version))
+        elif status == 'Canceled':
+            self.log.info('Event: %s Canceled', pod_id)
             self.watcher_queue.put((pod_id, State.FAILED, labels, resource_version))
         elif status == 'Succeeded':
             self.log.info('Event: %s Succeeded', pod_id)
