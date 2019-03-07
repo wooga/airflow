@@ -645,6 +645,8 @@ class KubernetesExecutor(BaseExecutor, LoggingMixin):
             key, state, pod_id, resource_version = results
             last_resource_version = resource_version
             self.log.info('Changing state of %s to %s', results, state)
+            if state == State.FAILED:
+                state = State.UP_FOR_RETRY
             self._change_state(key, state, pod_id)
 
         KubeResourceVersion.checkpoint_resource_version(last_resource_version)
