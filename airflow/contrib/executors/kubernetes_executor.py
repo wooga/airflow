@@ -24,6 +24,7 @@ from uuid import uuid4
 import kubernetes
 from kubernetes import watch, client
 from kubernetes.client.rest import ApiException
+from airflow.utils import timezone
 from airflow.configuration import conf
 from airflow.contrib.kubernetes.pod_launcher import PodLauncher
 from airflow.contrib.kubernetes.kube_client import get_kube_client
@@ -241,9 +242,9 @@ class KubeConfig:
     def _validate(self):
         # TODO: use XOR for dags_volume_claim and git_dags_folder_mount_point
         if not self.dags_volume_claim \
-           and not self.dags_volume_host \
-           and not self.dags_in_image \
-           and (not self.git_repo or not self.git_branch or not self.git_dags_folder_mount_point):
+            and not self.dags_volume_host \
+            and not self.dags_in_image \
+            and (not self.git_repo or not self.git_branch or not self.git_dags_folder_mount_point):
             raise AirflowConfigException(
                 'In kubernetes mode the following must be set in the `kubernetes` '
                 'config section: `dags_volume_claim` '
@@ -551,8 +552,8 @@ class KubernetesExecutor(BaseExecutor, LoggingMixin):
         proper support
         for State.LAUNCHED
         """
-        queued_tasks = session\
-            .query(TaskInstance)\
+        queued_tasks = session \
+            .query(TaskInstance) \
             .filter(TaskInstance.state == State.QUEUED).all()
         self.log.info(
             'When executor started up, found %s queued task instances',
@@ -680,14 +681,15 @@ class KubernetesExecutor(BaseExecutor, LoggingMixin):
         self.event_buffer[key] = state
         (dag_id, task_id, ex_time, try_number) = key
         with create_session() as session:
-            item = session.query(TaskInstance).filter_by(
+            ti = session.query(TaskInstance).filter_by(
                 dag_id=dag_id,
                 task_id=task_id,
                 execution_date=ex_time
             ).one()
             if state:
-                item.state = state
-                session.add(item)
+                ti.state = state
+                ti.end_date = timezone.utcnow()
+                session.add(ti)
 
     def end(self):
         self.log.info('Shutting down Kubernetes executor')
