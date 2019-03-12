@@ -202,10 +202,14 @@ class BaseJob(Base, LoggingMixin):
                 self._execute()
                 # In case of max runs or max duration
                 self.state = State.SUCCESS
-            except SystemExit:
+            except SystemExit as se:
                 # In case of ^C or SIGTERM
+                self.log.info('system exit')
+                self.log.exception(se)
                 self.state = State.SUCCESS
-            except Exception:
+            except Exception as e:
+                self.log.info('exception')
+                self.log.exception(e)
                 self.state = State.FAILED
                 raise
             finally:
@@ -1508,6 +1512,9 @@ class SchedulerJob(BaseJob):
 
         try:
             self._execute_helper()
+        except Exception as e:
+            self.log.exception(e)
+            raise
         finally:
             self.processor_agent.end()
             self.log.info("Exited execute loop")
