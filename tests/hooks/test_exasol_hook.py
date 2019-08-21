@@ -87,9 +87,14 @@ class TestExasolHook(unittest.TestCase):
 
         self.conn.set_autocommit.assert_called_once_with(autocommit)
 
+    def test_get_autocommit(self):
+        setattr(self.conn, 'autocommit', True)
+        setattr(self.conn, 'attr', {'autocommit': False})
+        self.assertFalse(self.db_hook.get_autocommit(self.conn))
+
     def test_run_without_autocommit(self):
         sql = 'SQL'
-        setattr(self.conn, 'autocommit', False)
+        setattr(self.conn, 'attr', {'autocommit': False})
 
         # Default autocommit setting should be False.
         # Testing default autocommit value as well as run() behavior.

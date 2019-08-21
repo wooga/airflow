@@ -142,6 +142,22 @@ class ExasolHook(DbApiHook):
                 getattr(self, self.conn_name_attr))
         conn.set_autocommit(autocommit)
 
+    def get_autocommit(self, conn):
+        """
+        Get autocommit setting for the provided connection.
+        Return True if autocommit is set.
+        Return False if autocommit is not set or set to False or conn
+        does not support autocommit.
+        :param conn: Connection to get autocommit setting from.
+        :type conn: connection object.
+        :return: connection autocommit setting.
+        :rtype bool.
+        """
+        autocommit = conn.attr.get('autocommit')
+        if autocommit is None:
+            autocommit = super(ExasolHook, self).get_autocommit(conn)
+        return autocommit
+
     @staticmethod
     def _serialize_cell(cell, conn):
         """
