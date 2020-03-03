@@ -408,8 +408,8 @@ class KubernetesJobWatcher(multiprocessing.Process, LoggingMixin):
             self.log.info('Event: %s Failed', pod_id)
             self.watcher_queue.put((pod_id, State.FAILED, labels, resource_version))
         elif status == 'Canceled':
-            self.log.info('Event: %s Canceled', pod_id)
-            self.watcher_queue.put((pod_id, State.FAILED, labels, resource_version))
+            self.log.info('Event: %s Canceled, will reschedule', pod_id)
+            self.watcher_queue.put((pod_id, State.UP_FOR_RESCHEDULE, labels, resource_version))
         elif status == 'Succeeded':
             self.log.info('Event: %s Succeeded', pod_id)
             self.watcher_queue.put((pod_id, None, labels, resource_version))
