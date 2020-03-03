@@ -23,7 +23,7 @@ import mock
 import unittest
 
 from airflow import models
-from airflow.contrib.hooks.exasol_hook import ExasolHook
+from airflow.hooks.exasol_hook import ExasolHook
 
 
 class TestExasolHookConn(unittest.TestCase):

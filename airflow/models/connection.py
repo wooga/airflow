@@ -306,7 +306,7 @@ class Connection(Base, LoggingMixin):
             from airflow.contrib.hooks.grpc_hook import GrpcHook
             return GrpcHook(grpc_conn_id=self.conn_id)
         elif self.conn_type == 'exasol':
-            from airflow.contrib.hooks.exasol_hook import ExasolHook
+            from airflow.hooks.exasol_hook import ExasolHook
             return ExasolHook(exasol_conn_id=self.conn_id)
         raise AirflowException("Unknown hook type {}".format(self.conn_type))
 
