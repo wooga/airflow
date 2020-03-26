@@ -129,7 +129,8 @@ class S3TaskHandler(FileTaskHandler, LoggingMixin):
         try:
             return self.hook.get_key(remote_log_location) is not None
         except Exception:
-            pass
+            msg = 'Failed to get key for {}'.format(remote_log_location)
+            self.log.exception(msg)
         return False
 
     def s3_read(self, remote_log_location, return_error=False):
